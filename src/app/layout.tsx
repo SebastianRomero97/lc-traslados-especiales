@@ -1,0 +1,29 @@
+import type { Metadata } from 'next';
+import { Nunito, Outfit } from 'next/font/google';
+import { siteConfig } from '@/config/site.config';
+import './globals.css';
+
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['400', '600', '700', '800'],
+  variable: '--font-nunito',
+});
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  variable: '--font-outfit',
+});
+
+export const metadata: Metadata = {
+  title: `${siteConfig.name} — Traslados para Niños con Discapacidad`,
+  description: siteConfig.description,
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="es" className={`${nunito.variable} ${outfit.variable}`}>
+      <body>{children}</body>
+    </html>
+  );
+}
