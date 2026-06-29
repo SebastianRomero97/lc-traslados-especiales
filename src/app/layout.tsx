@@ -18,6 +18,11 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: `${siteConfig.name} — Traslados para Niños con Discapacidad`,
   description: siteConfig.description,
+  icons: {
+    icon: [{ url: siteConfig.logoSrc, type: 'image/png' }],
+    shortcut: siteConfig.logoSrc,
+    apple: siteConfig.logoSrc,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
