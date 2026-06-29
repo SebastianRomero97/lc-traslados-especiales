@@ -1,8 +1,8 @@
 import type { Feature, InstitutionOption, Service, Stat, Step, Testimonial } from '@/types';
 
 export const heroStats: Stat[] = [
-  { value: '+500', label: 'Familias confían en nosotros' },
-  { value: '15+', label: 'Años de experiencia' },
+  { value: '+80', label: 'Familias confían en nosotros' },
+  { value: '+5', label: 'Años de experiencia' },
   { value: '100%', label: 'Traslados monitoreados' },
 ];
 
@@ -10,7 +10,7 @@ export const services: Service[] = [
   {
     id: 'personalizado',
     icon: '🧩',
-    title: 'Atención para cada niño',
+    title: 'Atención personalizada',
     description:
       'Conocemos las necesidades de cada uno para brindar un traslado seguro, tranquilo y adaptado a su ritmo.',
   },

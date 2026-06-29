@@ -7,10 +7,10 @@ export function Hero() {
       <div className="container hero__grid">
         <div className="hero__content">
           <h1 className="hero__title">
-            Acompañamos a tu hijo <span className="text-gradient">con cuidado</span> a sus terapias
+            Acompañamos a tu hijo <span className="text-gradient">con cuidado</span> a su destino
           </h1>
           <p className="hero__subtitle">
-            Traslados para niños con discapacidad hacia centros de terapia, rehabilitación y
+            Traslados para niños con necesidades especiales hacia centros de terapia, rehabilitación y
             tratamiento. Conductores capacitados, rutas personalizadas y la tranquilidad que tu
             familia necesita.
           </p>
