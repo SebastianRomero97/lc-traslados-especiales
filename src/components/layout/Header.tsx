@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { navLinks } from '@/config/site.config';
 import { useMobileNav } from '@/hooks/useMobileNav';
 import { useScrollHeader } from '@/hooks/useScrollHeader';
@@ -30,13 +31,23 @@ export function Header() {
             <ul className="nav__list">
               {navLinks.map((link) => (
                 <li key={link.href}>
-                  <a
-                    href={link.href}
-                    className={`nav__link${link.isCta ? ' nav__link--cta' : ''}`}
-                    onClick={close}
-                  >
-                    {link.label}
-                  </a>
+                  {link.href.startsWith('/') ? (
+                    <Link
+                      href={link.href}
+                      className={`nav__link${link.isCta ? ' nav__link--cta' : ''}`}
+                      onClick={close}
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className={`nav__link${link.isCta ? ' nav__link--cta' : ''}`}
+                      onClick={close}
+                    >
+                      {link.label}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

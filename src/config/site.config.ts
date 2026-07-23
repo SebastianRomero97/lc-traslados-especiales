@@ -26,14 +26,14 @@ export const navLinks: NavLink[] = [
   { href: '#nosotros', label: 'Nosotros' },
   { href: '#como-funciona', label: 'Cómo funciona' },
   { href: '#testimonios', label: 'Testimonios' },
-  { href: '#contacto', label: 'Contacto', isCta: true },
+  { href: '/login', label: 'Iniciar sesión', isCta: true },
 ];
 
 export const footerNavLinks: NavLink[] = [
   { href: '#servicios', label: 'Servicios' },
   { href: '#nosotros', label: 'Nosotros' },
   { href: '#como-funciona', label: 'Cómo funciona' },
-  { href: '#contacto', label: 'Contacto' },
+  { href: '/login', label: 'Iniciar sesión' },
 ];
 
 export const legalLinks: NavLink[] = [

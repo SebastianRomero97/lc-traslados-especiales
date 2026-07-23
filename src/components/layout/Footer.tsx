@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { footerNavLinks, legalLinks, siteConfig } from '@/config/site.config';
 import { Logo } from './Logo';
 
@@ -17,7 +18,11 @@ export function Footer() {
           <ul>
             {footerNavLinks.map((link) => (
               <li key={link.href}>
-                <a href={link.href}>{link.label}</a>
+                {link.href.startsWith('/') ? (
+                  <Link href={link.href}>{link.label}</Link>
+                ) : (
+                  <a href={link.href}>{link.label}</a>
+                )}
               </li>
             ))}
           </ul>

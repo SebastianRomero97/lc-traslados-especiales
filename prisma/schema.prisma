@@ -1,0 +1,53 @@
+// Prisma schema — LC Traslados Especiales
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  COORDINADORA
+  CELADORA
+  CHOFER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// Vehículo asignado (solo aplica a rol CHOFER)
+  transporteId String?
+  transporte   Transporte? @relation(fields: [transporteId], references: [id], onDelete: SetNull)
+}
+
+model Transporte {
+  id         String   @id @default(cuid())
+  nombre     String
+  tipo       String
+  capacidad  Int?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  choferes User[]
+}
+
+model Pasajero {
+  id         String   @id @default(cuid())
+  nombre     String
+  direccion  String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

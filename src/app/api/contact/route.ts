@@ -85,10 +85,13 @@ export async function POST(request: Request) {
     const sentWithResend = !sentWithGmail && (await sendViaResend(data, subject, html));
 
     if (!sentWithGmail && !sentWithResend) {
+      console.error(
+        '[API /contact] Email no configurado. Agregá RESEND_API_KEY, GMAIL_USER/GMAIL_APP_PASSWORD o NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY en Vercel.',
+      );
       return NextResponse.json(
         {
           message:
-            'El envío por servidor no está configurado. Usá NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY para Web3Forms.',
+            'No pudimos enviar tu consulta en este momento. Escribinos por WhatsApp o al teléfono y te respondemos a la brevedad.',
         },
         { status: 503 },
       );

@@ -1,7 +1,14 @@
 import { Button } from '@/components/ui/Button';
+import { siteConfig } from '@/config/site.config';
 import { heroStats } from '@/data/landing.data';
+import { getWhatsAppUrl } from '@/lib/contact.utils';
 
 export function Hero() {
+  const whatsappUrl = getWhatsAppUrl(
+    siteConfig.contact.whatsapp,
+    siteConfig.contact.whatsappMessage,
+  );
+
   return (
     <section className="hero">
       <div className="container hero__grid">
@@ -15,7 +22,13 @@ export function Hero() {
             familia necesita.
           </p>
           <div className="hero__actions">
-            <Button as="a" href="#contacto" variant="primary">
+            <Button
+              as="a"
+              href={whatsappUrl}
+              variant="primary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Solicitar información
             </Button>
             <Button as="a" href="#servicios" variant="outline">
