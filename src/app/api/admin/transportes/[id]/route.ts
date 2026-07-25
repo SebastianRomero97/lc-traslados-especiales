@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
+import { describeCaughtError } from '@/lib/api-errors';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -53,7 +54,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json({ data: transporte, message: 'Transporte actualizado.' });
   } catch (error) {
     console.error('[API /admin/transportes PATCH]', error);
-    return NextResponse.json({ message: 'No pudimos actualizar el transporte.' }, { status: 500 });
+    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos actualizar el transporte.') }, { status: 500 });
   }
 }
 
@@ -73,6 +74,6 @@ export async function DELETE(_request: Request, { params }: Params) {
     return NextResponse.json({ message: 'Transporte eliminado.' });
   } catch (error) {
     console.error('[API /admin/transportes DELETE]', error);
-    return NextResponse.json({ message: 'No pudimos eliminar el transporte.' }, { status: 500 });
+    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos eliminar el transporte.') }, { status: 500 });
   }
 }

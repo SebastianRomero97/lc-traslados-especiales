@@ -3,6 +3,7 @@ import { hash } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 import type { Role } from '@/lib/roles';
+import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
 
 const ASSIGNABLE_ROLES: Role[] = ['COORDINADORA', 'CELADORA', 'CHOFER'];
 
@@ -39,11 +40,12 @@ export async function POST(request: Request) {
     const password = body.password ?? '';
     const role = body.role as Role | undefined;
 
-    if (!username || !password || !role) {
-      return NextResponse.json(
-        { message: 'Completá usuario, contraseña y entidad.' },
-        { status: 400 },
-      );
+    const missing = missingFieldsMessage(
+      { username, password, role },
+      { username: 'usuario', password: 'contraseña', role: 'entidad' },
+    );
+    if (missing) {
+      return NextResponse.json({ message: missing }, { status: 400 });
     }
 
     if (username.length < 2) {
@@ -99,7 +101,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[API /admin/users POST]', error);
     return NextResponse.json(
-      { message: 'No pudimos crear el usuario.' },
+      { message: describeCaughtError(error, 'No pudimos crear el usuario.') },
       { status: 500 },
     );
   }

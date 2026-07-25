@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 import { ROLE_LABEL, type Role } from '@/lib/roles';
 
 type AdminUser = {
@@ -37,7 +38,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       }
       setUsers(body.data as AdminUser[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión al cargar usuarios.' });
+      setFeedback({ type: 'error', message: 'Error de conexión al cargar usuarios. Revisá que el servidor esté en marcha.' });
     } finally {
       setLoading(false);
     }
@@ -50,6 +51,16 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     setFeedback(null);
+
+    const missing = missingFieldsMessage(
+      { username: form.username, password: form.password, role: form.role },
+      { username: 'usuario', password: 'contraseña', role: 'entidad' },
+    );
+    if (missing) {
+      setFeedback({ type: 'error', message: missing });
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -58,18 +69,24 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      const body = await response.json();
 
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudo crear el usuario.' });
+        setFeedback({
+          type: 'error',
+          message: await readApiError(response, 'No se pudo crear el usuario.'),
+        });
         return;
       }
 
+      const body = (await response.json()) as { message?: string };
       setForm({ username: '', password: '', role: 'CELADORA' });
       setFeedback({ type: 'success', message: body.message ?? 'Usuario creado.' });
       await loadUsers();
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión al crear el usuario.' });
+      setFeedback({
+        type: 'error',
+        message: 'Error de conexión al crear el usuario. Revisá que el servidor esté en marcha.',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -83,17 +100,23 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     setFeedback(null);
     try {
       const response = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
-      const body = await response.json();
 
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudo eliminar.' });
+        setFeedback({
+          type: 'error',
+          message: await readApiError(response, 'No se pudo eliminar el usuario.'),
+        });
         return;
       }
 
+      const body = (await response.json()) as { message?: string };
       setFeedback({ type: 'success', message: body.message ?? 'Usuario eliminado.' });
       await loadUsers();
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión al eliminar.' });
+      setFeedback({
+        type: 'error',
+        message: 'Error de conexión al eliminar. Revisá que el servidor esté en marcha.',
+      });
     }
   };
 

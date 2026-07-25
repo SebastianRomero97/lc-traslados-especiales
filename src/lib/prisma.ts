@@ -18,8 +18,21 @@ function createPrismaClient() {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+function isUsableClient(client: PrismaClient | undefined): client is PrismaClient {
+  if (!client) return false;
+  // Evita cliente viejo en hot-reload cuando se agregan modelos (ej. Grilla)
+  const grilla = (client as unknown as { grilla?: { findMany?: unknown } }).grilla;
+  return typeof grilla?.findMany === 'function';
 }
+
+function getPrismaClient() {
+  if (isUsableClient(globalForPrisma.prisma)) {
+    return globalForPrisma.prisma;
+  }
+
+  const client = createPrismaClient();
+  globalForPrisma.prisma = client;
+  return client;
+}
+
+export const prisma = getPrismaClient();

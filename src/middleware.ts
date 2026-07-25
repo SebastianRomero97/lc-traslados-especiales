@@ -48,7 +48,11 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith(path),
     )?.[1];
 
-    if (requiredRole && session.role !== requiredRole) {
+    // Admin puede entrar al panel de coordinadora para soporte
+    const isAdminOnCoord =
+      session.role === 'ADMIN' && pathname.startsWith('/panel/coordinadora');
+
+    if (requiredRole && session.role !== requiredRole && !isAdminOnCoord) {
       return NextResponse.redirect(
         new URL(ROLE_PANEL_PATH[session.role as Role], request.url),
       );

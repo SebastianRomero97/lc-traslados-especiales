@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 
@@ -38,11 +39,12 @@ export async function POST(request: Request) {
         ? null
         : Number(capacidadRaw);
 
-    if (!nombre || !tipo) {
-      return NextResponse.json(
-        { message: 'Completá nombre y tipo de transporte.' },
-        { status: 400 },
-      );
+    const missing = missingFieldsMessage(
+      { nombre, tipo },
+      { nombre: 'nombre del transporte', tipo: 'tipo' },
+    );
+    if (missing) {
+      return NextResponse.json({ message: missing }, { status: 400 });
     }
 
     if (capacidad !== null && (Number.isNaN(capacidad) || capacidad < 1)) {
@@ -54,8 +56,8 @@ export async function POST(request: Request) {
 
     const transporte = await prisma.transporte.create({
       data: {
-        nombre,
-        tipo,
+        nombre: nombre!,
+        tipo: tipo!,
         capacidad,
         active: true,
       },
@@ -67,6 +69,9 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error('[API /admin/transportes POST]', error);
-    return NextResponse.json({ message: 'No pudimos crear el transporte.' }, { status: 500 });
+    return NextResponse.json(
+      { message: describeCaughtError(error, 'No pudimos crear el transporte.') },
+      { status: 500 },
+    );
   }
 }

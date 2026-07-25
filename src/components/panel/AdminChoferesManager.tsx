@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { readApiError } from '@/lib/api-errors';
 
 type TransporteOption = { id: string; nombre: string; tipo: string };
 
@@ -32,7 +33,7 @@ export function AdminChoferesManager() {
       setChoferes(body.data.choferes as Chofer[]);
       setTransportes(body.data.transportes as TransporteOption[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión.' });
+      setFeedback({ type: 'error', message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.' });
     } finally {
       setLoading(false);
     }
@@ -49,11 +50,14 @@ export function AdminChoferesManager() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transporteId: transporteId === '' ? null : transporteId }),
     });
-    const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudo asignar.' });
+      setFeedback({
+        type: 'error',
+        message: await readApiError(response, 'No se pudo asignar el transporte.'),
+      });
       return;
     }
+    const body = (await response.json()) as { message?: string };
     setFeedback({ type: 'success', message: body.message ?? 'Asignación actualizada.' });
     await load();
   };

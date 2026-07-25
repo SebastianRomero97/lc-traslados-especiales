@@ -227,8 +227,14 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 |-------|-------------|
 | Horario de llegada estimada | — |
 | Dirección | Lo más precisa posible (para Maps/Waze) |
-| Nombre del pasajero | — |
-| Estado | `sube` / `baja` |
+| Nombre del pasajero / detalle | También puede ser destino (ej. pasajeros → Cetrinet) |
+| Estado | `sube` / `baja` / `trasbordo` |
+| Trasbordo hacia | Si es trasbordo: nombre del otro vehículo |
+
+**Tipos de parada al crear grilla**
+- **Pasajero:** sube/baja en domicilio
+- **Destino del área:** ej. Cetrinet (bajan pasajeros y el recorrido puede seguir)
+- **Trasbordo:** el pasajero pasa a otro vehículo para optimizar rutas
 
 ---
 
@@ -345,7 +351,11 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 - [x] **Fase 1 implementada:** login, paneles vacíos por rol, seed, sin Contacto en landing
 - [x] **Fase 2 implementada:** Admin crea/elimina usuarios y asigna entidad
 - [x] **Fase 3 implementada:** Transportes, pasajeros, asignación de vehículo a choferes
-- [ ] Fase 4: Coordinadora — áreas, destinos y asignaciones
+- [x] **Fase 4 implementada:** Áreas, destinos y asignaciones (Coordinadora)
+- [x] **Fase 5 implementada:** Grillas (crear, listar, WhatsApp texto, imprimir)
+- [ ] Fase 6: Paneles Celadora / Chofer
+- [ ] Fase 7: Gráficas + publicaciones
+- [ ] Fase 8 (respaldo): descargar / imprimir historiales (PDF/Excel + papel)
 
 ---
 
@@ -353,7 +363,8 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 
 - Desarrollar **parte por parte** según el plan de fases.
 - Stack y alcance principal: **confirmados**.
-- **Fases 1–3:** listas. Siguiente: **Fase 4**.
+- **Fases 1–5:** listas. Siguiente: **Fase 6 (Celadora / Chofer)**.
+- Commit Fases 1–3 ya pusheado a GitHub (`4d9a20d`). Fase 4–5 pendientes de commit.
 
 ### Claim DB (desarrollo)
 DB reclamada por el usuario.
@@ -379,3 +390,21 @@ DB reclamada por el usuario.
 - Tras cambios de schema: `npx prisma generate && npx prisma db push`
 - Si el dev server queda “viejo”: un solo `npm run dev` (evitar dos puertos 3000/3001)
 - Scripts útiles: `npm run db:seed`, `npm run db:setup`
+
+---
+
+## Respaldo de historiales (acordado)
+
+Además de la base de datos, se implementará (en una fase posterior a grillas/métricas) la posibilidad de:
+
+- **Descargar** historiales (PDF y/o Excel)
+- **Imprimir** historiales desde el panel (Admin / Coordinadora)
+
+Objetivo: que la empresa tenga copia en papel o archivo local como respaldo ante fallos técnicos.
+
+Alcance tentativo:
+- Por rango de fechas
+- Por área / destino / transporte / pasajero (filtros)
+- Incluir asistencias, tiempos de recorrido e informes
+
+Prioridad: después de Fase 5–7 (cuando ya exista historial real que exportar).

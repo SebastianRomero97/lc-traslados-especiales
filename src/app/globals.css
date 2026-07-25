@@ -1520,3 +1520,143 @@ button, input, select, textarea {
   font: inherit;
   background: #fff;
 }
+
+.coord-area-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: var(--space-sm);
+}
+
+.coord-assign-grid {
+  display: grid;
+  gap: var(--space-md);
+}
+
+@media (min-width: 900px) {
+  .coord-assign-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.coord-assign-grid h3 {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.coord-assign-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.coord-chip-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.coord-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #fffaf3;
+  font-size: 0.92rem;
+}
+
+.coord-chip--block {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.coord-chip__main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.coord-chip small {
+  color: var(--color-text-muted);
+}
+
+.coord-chip__remove {
+  border: none;
+  background: transparent;
+  color: #b91c1c;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+}
+
+.grilla-form__grid {
+  display: grid;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+@media (min-width: 800px) {
+  .grilla-form__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .grilla-form__nota {
+    grid-column: 1 / -1;
+  }
+}
+
+.grilla-filas__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.grilla-filas__head h3 {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+}
+
+.grilla-fila {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.65rem;
+  background: #fffdf8;
+}
+
+@media (min-width: 900px) {
+  .grilla-fila {
+    grid-template-columns: 0.7fr 1.1fr 1fr 1.4fr 0.7fr auto;
+    align-items: end;
+  }
+
+  .grilla-fila--rich {
+    grid-template-columns: 0.7fr 1fr 1.1fr 1.1fr 1.3fr 0.8fr 1fr auto;
+  }
+}
+
+.grilla-preview__nota {
+  font-style: italic;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-sm);
+}
+
+.grilla-preview__table thead th {
+  background: #111;
+  color: #fff;
+}
+
+.admin-users__table tr.is-selected {
+  background: #fff7ed;
+}

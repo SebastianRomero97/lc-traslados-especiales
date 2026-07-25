@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 
@@ -26,17 +27,18 @@ export async function POST(request: Request) {
     const nombre = body.nombre?.trim();
     const direccion = body.direccion?.trim();
 
-    if (!nombre || !direccion) {
-      return NextResponse.json(
-        { message: 'Completá nombre y dirección del pasajero.' },
-        { status: 400 },
-      );
+    const missing = missingFieldsMessage(
+      { nombre, direccion },
+      { nombre: 'nombre del pasajero', direccion: 'dirección' },
+    );
+    if (missing) {
+      return NextResponse.json({ message: missing }, { status: 400 });
     }
 
     const pasajero = await prisma.pasajero.create({
       data: {
-        nombre,
-        direccion,
+        nombre: nombre!,
+        direccion: direccion!,
         active: true,
       },
     });
@@ -47,6 +49,9 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error('[API /admin/pasajeros POST]', error);
-    return NextResponse.json({ message: 'No pudimos crear el pasajero.' }, { status: 500 });
+    return NextResponse.json(
+      { message: describeCaughtError(error, 'No pudimos crear el pasajero.') },
+      { status: 500 },
+    );
   }
 }

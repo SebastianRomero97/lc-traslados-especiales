@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 
 type Transporte = {
   id: string;
@@ -31,7 +32,7 @@ export function AdminTransportesManager() {
       }
       setItems(body.data as Transporte[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión.' });
+      setFeedback({ type: 'error', message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.' });
     } finally {
       setLoading(false);
     }
@@ -44,6 +45,16 @@ export function AdminTransportesManager() {
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     setFeedback(null);
+
+    const missing = missingFieldsMessage(
+      { nombre: form.nombre, tipo: form.tipo },
+      { nombre: 'nombre del transporte', tipo: 'tipo' },
+    );
+    if (missing) {
+      setFeedback({ type: 'error', message: missing });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await fetch('/api/admin/transportes', {
@@ -55,16 +66,22 @@ export function AdminTransportesManager() {
           capacidad: form.capacidad === '' ? null : Number(form.capacidad),
         }),
       });
-      const body = await response.json();
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudo crear.' });
+        setFeedback({
+          type: 'error',
+          message: await readApiError(response, 'No se pudo crear el transporte.'),
+        });
         return;
       }
+      const body = (await response.json()) as { message?: string };
       setForm({ nombre: '', tipo: '', capacidad: '' });
       setFeedback({ type: 'success', message: body.message ?? 'Creado.' });
       await load();
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión.' });
+      setFeedback({
+        type: 'error',
+        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -77,9 +94,11 @@ export function AdminTransportesManager() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !item.active }),
     });
-    const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudo actualizar.' });
+      setFeedback({
+        type: 'error',
+        message: await readApiError(response, 'No se pudo actualizar el transporte.'),
+      });
       return;
     }
     await load();
@@ -89,11 +108,14 @@ export function AdminTransportesManager() {
     if (!window.confirm(`¿Eliminar el transporte "${item.nombre}"?`)) return;
     setFeedback(null);
     const response = await fetch(`/api/admin/transportes/${item.id}`, { method: 'DELETE' });
-    const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudo eliminar.' });
+      setFeedback({
+        type: 'error',
+        message: await readApiError(response, 'No se pudo eliminar el transporte.'),
+      });
       return;
     }
+    const body = (await response.json()) as { message?: string };
     setFeedback({ type: 'success', message: body.message ?? 'Eliminado.' });
     await load();
   };

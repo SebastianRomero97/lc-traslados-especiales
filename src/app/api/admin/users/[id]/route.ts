@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
+import { describeCaughtError } from '@/lib/api-errors';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -40,7 +41,7 @@ export async function DELETE(_request: Request, { params }: Params) {
   } catch (error) {
     console.error('[API /admin/users DELETE]', error);
     return NextResponse.json(
-      { message: 'No pudimos eliminar el usuario.' },
+      { message: describeCaughtError(error, 'No pudimos eliminar el usuario.') },
       { status: 500 },
     );
   }

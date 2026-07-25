@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 
 type Pasajero = {
   id: string;
@@ -29,7 +30,7 @@ export function AdminPasajerosManager() {
       }
       setItems(body.data as Pasajero[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión.' });
+      setFeedback({ type: 'error', message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.' });
     } finally {
       setLoading(false);
     }
@@ -42,6 +43,16 @@ export function AdminPasajerosManager() {
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     setFeedback(null);
+
+    const missing = missingFieldsMessage(
+      { nombre: form.nombre, direccion: form.direccion },
+      { nombre: 'nombre del pasajero', direccion: 'dirección' },
+    );
+    if (missing) {
+      setFeedback({ type: 'error', message: missing });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await fetch('/api/admin/pasajeros', {
@@ -49,16 +60,22 @@ export function AdminPasajerosManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      const body = await response.json();
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudo crear.' });
+        setFeedback({
+          type: 'error',
+          message: await readApiError(response, 'No se pudo crear el pasajero.'),
+        });
         return;
       }
+      const body = (await response.json()) as { message?: string };
       setForm({ nombre: '', direccion: '' });
       setFeedback({ type: 'success', message: body.message ?? 'Creado.' });
       await load();
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión.' });
+      setFeedback({
+        type: 'error',
+        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -71,9 +88,11 @@ export function AdminPasajerosManager() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !item.active }),
     });
-    const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudo actualizar.' });
+      setFeedback({
+        type: 'error',
+        message: await readApiError(response, 'No se pudo actualizar el pasajero.'),
+      });
       return;
     }
     await load();
@@ -83,11 +102,14 @@ export function AdminPasajerosManager() {
     if (!window.confirm(`¿Eliminar al pasajero "${item.nombre}"?`)) return;
     setFeedback(null);
     const response = await fetch(`/api/admin/pasajeros/${item.id}`, { method: 'DELETE' });
-    const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudo eliminar.' });
+      setFeedback({
+        type: 'error',
+        message: await readApiError(response, 'No se pudo eliminar el pasajero.'),
+      });
       return;
     }
+    const body = (await response.json()) as { message?: string };
     setFeedback({ type: 'success', message: body.message ?? 'Eliminado.' });
     await load();
   };

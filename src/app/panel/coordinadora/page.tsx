@@ -1,17 +1,19 @@
 import { PanelShell, requireRole } from '@/components/panel/PanelShell';
+import { CoordinadoraPanelTabs } from '@/components/panel/CoordinadoraPanelTabs';
 
 export default async function CoordinadoraPanelPage() {
-  const user = await requireRole('COORDINADORA');
+  const user = await requireRole(['COORDINADORA', 'ADMIN']);
 
   return (
     <PanelShell user={user} title="Panel Coordinadora">
-      <section className="panel-placeholder">
+      <section className="panel-intro">
         <h2>Bienvenida, {user.username}</h2>
         <p>
-          Acá vas a gestionar áreas, destinos, asignaciones y grillas. Esta pantalla se completa
-          en las próximas fases.
+          Gestioná áreas, asignaciones y grillas (hojas de ruta) para compartir con el equipo.
         </p>
       </section>
+
+      <CoordinadoraPanelTabs />
     </PanelShell>
   );
 }

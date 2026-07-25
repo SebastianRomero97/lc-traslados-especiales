@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
+import { describeCaughtError } from '@/lib/api-errors';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -58,7 +59,7 @@ export async function PATCH(request: Request, { params }: Params) {
   } catch (error) {
     console.error('[API /admin/choferes PATCH]', error);
     return NextResponse.json(
-      { message: 'No pudimos actualizar la asignación del chofer.' },
+      { message: describeCaughtError(error, 'No pudimos actualizar la asignación del chofer.') },
       { status: 500 },
     );
   }

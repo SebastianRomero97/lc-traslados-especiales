@@ -17,6 +17,17 @@ enum Role {
   CHOFER
 }
 
+enum TipoItinerario {
+  INGRESO
+  SALIDA
+}
+
+enum AccionParada {
+  SUBE
+  BAJA
+  TRASBORDO
+}
+
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -28,26 +39,157 @@ model User {
 
   /// Vehículo asignado (solo aplica a rol CHOFER)
   transporteId String?
-  transporte   Transporte? @relation(fields: [transporteId], references: [id], onDelete: SetNull)
+  transporte   Transporte? @relation("ChoferVehiculo", fields: [transporteId], references: [id], onDelete: SetNull)
+
+  areasComoCeladora       AreaCeladora[]
+  transportesComoCeladora TransporteCeladora[]
+
+  grillasComoChofer   Grilla[] @relation("GrillaChofer")
+  grillasComoCeladora Grilla[] @relation("GrillaCeladora")
+  grillasCreadas      Grilla[] @relation("GrillaCreador")
 }
 
 model Transporte {
-  id         String   @id @default(cuid())
-  nombre     String
-  tipo       String
-  capacidad  Int?
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  nombre    String
+  tipo      String
+  capacidad Int?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  choferes User[]
+  choferes  User[]               @relation("ChoferVehiculo")
+  areas     AreaTransporte[]
+  celadoras TransporteCeladora[]
+  grillas   Grilla[]
 }
 
 model Pasajero {
-  id         String   @id @default(cuid())
-  nombre     String
-  direccion  String
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  nombre    String
+  direccion String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  areas AreaPasajero[]
+  filas GrillaFila[]
+}
+
+model Area {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  destinos    Destino[]
+  celadoras   AreaCeladora[]
+  transportes AreaTransporte[]
+  pasajeros   AreaPasajero[]
+  grillas     Grilla[]
+}
+
+model Destino {
+  id        String   @id @default(cuid())
+  nombre    String
+  domicilio String
+  active    Boolean  @default(true)
+  areaId    String
+  area      Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filas GrillaFila[]
+
+  @@index([areaId])
+}
+
+model AreaCeladora {
+  areaId String
+  userId String
+  area   Area @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([areaId, userId])
+}
+
+model AreaTransporte {
+  areaId       String
+  transporteId String
+  area         Area       @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  transporte   Transporte @relation(fields: [transporteId], references: [id], onDelete: Cascade)
+
+  @@id([areaId, transporteId])
+}
+
+model AreaPasajero {
+  areaId     String
+  pasajeroId String
+  area       Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  pasajero   Pasajero @relation(fields: [pasajeroId], references: [id], onDelete: Cascade)
+
+  @@id([areaId, pasajeroId])
+}
+
+model TransporteCeladora {
+  transporteId String
+  userId       String
+  transporte   Transporte @relation(fields: [transporteId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([transporteId, userId])
+}
+
+/// Hoja de ruta / itinerario diario
+model Grilla {
+  id             String         @id @default(cuid())
+  tipoItinerario TipoItinerario
+  fecha          DateTime       @db.Date
+  nota           String?
+  conCeladora    Boolean        @default(true)
+
+  areaId String
+  area   Area   @relation(fields: [areaId], references: [id], onDelete: Restrict)
+
+  transporteId String
+  transporte   Transporte @relation(fields: [transporteId], references: [id], onDelete: Restrict)
+
+  choferId String
+  chofer   User   @relation("GrillaChofer", fields: [choferId], references: [id], onDelete: Restrict)
+
+  celadoraId String?
+  celadora   User?   @relation("GrillaCeladora", fields: [celadoraId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation("GrillaCreador", fields: [createdById], references: [id], onDelete: Restrict)
+
+  filas GrillaFila[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fecha])
+  @@index([choferId])
+  @@index([celadoraId])
+  @@index([areaId])
+}
+
+model GrillaFila {
+  id             String      @id @default(cuid())
+  grillaId       String
+  grilla         Grilla      @relation(fields: [grillaId], references: [id], onDelete: Cascade)
+  orden          Int
+  hora           String
+  direccion      String
+  pasajeroNombre String
+  pasajeroId     String?
+  pasajero       Pasajero?   @relation(fields: [pasajeroId], references: [id], onDelete: SetNull)
+  destinoId      String?
+  destino        Destino?    @relation(fields: [destinoId], references: [id], onDelete: SetNull)
+  accion         AccionParada
+  /// Nombre del otro vehículo cuando accion = TRASBORDO
+  trasbordoHacia String?
+
+  @@index([grillaId])
 }

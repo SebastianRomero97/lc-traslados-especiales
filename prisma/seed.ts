@@ -37,6 +37,16 @@ async function main() {
     });
     console.log(`✓ Usuario ${user.username} (${user.role})`);
   }
+
+  const areasSeed = ['San Miguel', 'Villa de Mayo'];
+  for (const nombre of areasSeed) {
+    await prisma.area.upsert({
+      where: { nombre },
+      update: { active: true },
+      create: { nombre, active: true },
+    });
+    console.log(`✓ Área ${nombre}`);
+  }
 }
 
 main()
