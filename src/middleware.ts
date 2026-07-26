@@ -33,7 +33,12 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const secret = process.env.AUTH_SECRET;
 
+  // Sin AUTH_SECRET no se puede validar sesión: dejar pasar /login (evitar bucle)
+  // y mandar paneles a login una sola vez.
   if (!secret) {
+    if (pathname.startsWith('/login')) {
+      return NextResponse.next();
+    }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
