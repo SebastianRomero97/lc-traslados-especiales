@@ -49,4 +49,14 @@ function getPrismaClient() {
   return client;
 }
 
-export const prisma = getPrismaClient();
+/**
+ * Acceso lazy: no conecta en import (evita que `next build` falle sin DATABASE_URL).
+ * La URL sigue siendo obligatoria en runtime.
+ */
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
