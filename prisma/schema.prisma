@@ -32,12 +32,13 @@ model User {
   id           String   @id @default(cuid())
   username     String   @unique
   passwordHash String
-  role         Role
+  /// Uno o más roles. Admin es exclusivo ([ADMIN]). Operativos: combinación de COORDINADORA / CELADORA / CHOFER.
+  roles        Role[]
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  /// Vehículo asignado (solo aplica a rol CHOFER)
+  /// Vehículo asignado (solo aplica si tiene rol CHOFER)
   transporteId String?
   transporte   Transporte? @relation("ChoferVehiculo", fields: [transporteId], references: [id], onDelete: SetNull)
 

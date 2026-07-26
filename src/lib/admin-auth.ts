@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import type { SessionUser } from '@/lib/roles';
+import { hasRole, type SessionUser } from '@/lib/roles';
 
 export async function requireAdminApi(): Promise<
   { user: SessionUser } | { error: NextResponse }
@@ -13,7 +13,7 @@ export async function requireAdminApi(): Promise<
     };
   }
 
-  if (session.role !== 'ADMIN') {
+  if (!hasRole(session, 'ADMIN')) {
     return {
       error: NextResponse.json({ message: 'No autorizado.' }, { status: 403 }),
     };

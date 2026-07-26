@@ -1,7 +1,7 @@
 # Plan — Sistema interno LC Traslados Especiales
 
-Documento de requisitos acordados. **Estado:** Fases 1–3 implementadas · siguiente Fase 4.  
-Última actualización: 22 jul 2026 (cierre de jornada).
+Documento de requisitos acordados. **Estado:** Fases 1–5 + multi-rol · siguiente Fase 6.  
+Última actualización: 25 jul 2026 (roles múltiples + Gladis Admin).
 
 ---
 
@@ -54,10 +54,12 @@ Estados comunes (donde aplique): **activo** / **inactivo**.
 - **Solo el Admin** puede crear usuarios (no hay registro público).
 - Desde su panel puede:
   - **Crear** usuario: nombre de usuario + contraseña.
-  - **Asignar entidad/rol** al usuario (coordinadora, celadora, chofer).
-  - **Eliminar** usuario.
+  - **Asignar uno o más roles** al usuario: Coordinadora, Celadora y/o Chofer (cualquier combinación).
+  - **Eliminar** usuario (no Admins).
+- El rol **Admin** no se asigna desde el panel: solo existen por seed (Hori y Gladis).
 - Las credenciales son **únicas**.
-- Quien ingresa lo hace porque el Admin ya le dio usuario, contraseña y entidad.
+- Quien ingresa lo hace porque el Admin ya le dio usuario, contraseña y rol(es).
+- Usuarios con varios roles ven un **selector de paneles** y pueden cambiar entre ellos.
 - Usuarios seed iniciales (solo desarrollo): ver sección correspondiente.
 
 ### Transportes
@@ -296,11 +298,12 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 
 ## Usuarios seed (desarrollo / pruebas)
 
-> Solo para entorno de desarrollo/pruebas. En producción el Admin crea y gestiona todos los usuarios.
+> Solo para entorno de desarrollo/pruebas. En producción el Admin crea y gestiona todos los usuarios operativos. Los Admin no se crean desde el panel.
 
-| Rol | Usuario | Contraseña |
-|-----|---------|------------|
+| Roles | Usuario | Contraseña |
+|-------|---------|------------|
 | Admin | Hori | 1234 |
+| Admin | Gladis | 1234 |
 | Coordinadora | Fernanda | 1234 |
 | Celadora | Camila | 1234 |
 | Chofer | Seba | 1234 |
@@ -308,10 +311,11 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 ### Reglas de alta / acceso
 - No hay auto-registro ni alta pública.
 - **Admin** crea usuario + contraseña desde su panel.
-- **Admin** asigna la **entidad/rol** (coordinadora, celadora, chofer).
-- **Admin** puede eliminar usuarios.
+- **Admin** asigna **uno o más roles** (Coordinadora, Celadora, Chofer). Ejemplo: Celadora + Coordinadora (responsable de área).
+- **Admin** no se asigna ni se elimina desde el panel (solo Hori y Gladis por seed).
 - Credenciales **únicas** por persona.
-- El acceso implica que el Admin ya entregó las credenciales y la entidad a esa persona.
+- El acceso implica que el Admin ya entregó las credenciales y el/los rol(es) a esa persona.
+- Multi-rol: un solo login; selector “Ir a: …” entre paneles permitidos.
 
 ---
 
@@ -353,6 +357,7 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 - [x] **Fase 3 implementada:** Transportes, pasajeros, asignación de vehículo a choferes
 - [x] **Fase 4 implementada:** Áreas, destinos y asignaciones (Coordinadora)
 - [x] **Fase 5 implementada:** Grillas (crear, listar, WhatsApp texto, imprimir)
+- [x] **Multi-rol:** un usuario puede tener varios roles (excepto Admin); Gladis Admin en seed
 - [ ] Fase 6: Paneles Celadora / Chofer
 - [ ] Fase 7: Gráficas + publicaciones
 - [ ] Fase 8 (respaldo): descargar / imprimir historiales (PDF/Excel + papel)
@@ -363,8 +368,8 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 
 - Desarrollar **parte por parte** según el plan de fases.
 - Stack y alcance principal: **confirmados**.
-- **Fases 1–5:** listas. Siguiente: **Fase 6 (Celadora / Chofer)**.
-- Commit Fases 1–3 ya pusheado a GitHub (`4d9a20d`). Fase 4–5 pendientes de commit.
+- **Fases 1–5 + multi-rol:** listas. Siguiente: **Fase 6 (Celadora / Chofer)**.
+- Commit Fases 1–3 ya pusheado a GitHub (`4d9a20d`). Fase 4–5 y multi-rol pendientes de commit.
 
 ### Claim DB (desarrollo)
 DB reclamada por el usuario.

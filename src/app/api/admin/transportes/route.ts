@@ -11,7 +11,7 @@ export async function GET() {
     orderBy: { nombre: 'asc' },
     include: {
       choferes: {
-        where: { role: 'CHOFER' },
+        where: { roles: { has: 'CHOFER' } },
         select: { id: true, username: true },
       },
     },

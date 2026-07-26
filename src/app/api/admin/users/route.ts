@@ -2,21 +2,19 @@ import { NextResponse } from 'next/server';
 import { hash } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
-import type { Role } from '@/lib/roles';
+import { isValidAssignableRoles, type Role } from '@/lib/roles';
 import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
-
-const ASSIGNABLE_ROLES: Role[] = ['COORDINADORA', 'CELADORA', 'CHOFER'];
 
 export async function GET() {
   const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
 
   const users = await prisma.user.findMany({
-    orderBy: [{ role: 'asc' }, { username: 'asc' }],
+    orderBy: { username: 'asc' },
     select: {
       id: true,
       username: true,
-      role: true,
+      roles: true,
       active: true,
       createdAt: true,
     },
@@ -33,22 +31,26 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       username?: string;
       password?: string;
+      roles?: unknown;
       role?: string;
     };
 
     const username = body.username?.trim();
     const password = body.password ?? '';
-    const role = body.role as Role | undefined;
+
+    // Compat: aceptar role único o roles[]
+    const rolesInput: unknown =
+      body.roles ?? (body.role ? [body.role] : undefined);
 
     const missing = missingFieldsMessage(
-      { username, password, role },
-      { username: 'usuario', password: 'contraseña', role: 'entidad' },
+      { username, password, roles: rolesInput },
+      { username: 'usuario', password: 'contraseña', roles: 'al menos un rol' },
     );
     if (missing) {
       return NextResponse.json({ message: missing }, { status: 400 });
     }
 
-    if (username.length < 2) {
+    if (!username || username.length < 2) {
       return NextResponse.json(
         { message: 'El usuario debe tener al menos 2 caracteres.' },
         { status: 400 },
@@ -62,12 +64,17 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!ASSIGNABLE_ROLES.includes(role)) {
+    if (!isValidAssignableRoles(rolesInput)) {
       return NextResponse.json(
-        { message: 'La entidad seleccionada no es válida.' },
+        {
+          message:
+            'Seleccioná al menos un rol válido (Coordinadora, Celadora y/o Chofer). El Admin no se asigna desde el panel.',
+        },
         { status: 400 },
       );
     }
+
+    const roles = rolesInput as Role[];
 
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) {
@@ -82,13 +89,13 @@ export async function POST(request: Request) {
       data: {
         username,
         passwordHash,
-        role,
+        roles,
         active: true,
       },
       select: {
         id: true,
         username: true,
-        role: true,
+        roles: true,
         active: true,
         createdAt: true,
       },

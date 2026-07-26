@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { compare } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { createSessionToken, setSessionCookie } from '@/lib/auth';
-import { ROLE_PANEL_PATH } from '@/lib/roles';
+import { defaultPanelPath, type Role } from '@/lib/roles';
 
 export async function POST(request: Request) {
   try {
@@ -34,10 +34,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const roles = user.roles as Role[];
     const sessionUser = {
       id: user.id,
       username: user.username,
-      role: user.role,
+      roles,
     };
 
     const token = await createSessionToken(sessionUser);
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       message: 'Sesión iniciada.',
-      redirectTo: ROLE_PANEL_PATH[user.role],
+      redirectTo: defaultPanelPath(sessionUser),
       user: sessionUser,
     });
   } catch (error) {

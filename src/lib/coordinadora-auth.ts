@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import type { SessionUser } from '@/lib/roles';
+import { hasAnyRole, type SessionUser } from '@/lib/roles';
 
 export async function requireCoordinadoraApi(): Promise<
   { user: SessionUser } | { error: NextResponse }
@@ -13,7 +13,7 @@ export async function requireCoordinadoraApi(): Promise<
     };
   }
 
-  if (session.role !== 'COORDINADORA' && session.role !== 'ADMIN') {
+  if (!hasAnyRole(session, ['COORDINADORA', 'ADMIN'])) {
     return {
       error: NextResponse.json({ message: 'No autorizado.' }, { status: 403 }),
     };

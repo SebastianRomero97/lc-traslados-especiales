@@ -28,7 +28,7 @@ export async function DELETE(_request: Request, { params }: Params) {
       return NextResponse.json({ message: 'Usuario no encontrado.' }, { status: 404 });
     }
 
-    if (existing.role === 'ADMIN') {
+    if (existing.roles.includes('ADMIN')) {
       return NextResponse.json(
         { message: 'No se puede eliminar un usuario Admin desde el panel.' },
         { status: 400 },

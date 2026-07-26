@@ -24,7 +24,7 @@ export async function GET(request: Request) {
               tipo: true,
               active: true,
               choferes: {
-                where: { active: true, role: 'CHOFER' },
+                where: { active: true, roles: { has: 'CHOFER' } },
                 select: { id: true, username: true },
               },
               celadoras: {
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   }
 
   const choferes = await prisma.user.findMany({
-    where: { role: 'CHOFER', active: true },
+    where: { roles: { has: 'CHOFER' }, active: true },
     select: { id: true, username: true, transporteId: true },
     orderBy: { username: 'asc' },
   });

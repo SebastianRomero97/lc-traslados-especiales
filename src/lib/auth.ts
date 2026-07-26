@@ -14,11 +14,20 @@ function getSecret() {
   return new TextEncoder().encode(secret);
 }
 
+function isRole(value: unknown): value is Role {
+  return (
+    value === 'ADMIN' ||
+    value === 'COORDINADORA' ||
+    value === 'CELADORA' ||
+    value === 'CHOFER'
+  );
+}
+
 export async function createSessionToken(user: SessionUser): Promise<string> {
   return new SignJWT({
     id: user.id,
     username: user.username,
-    role: user.role,
+    roles: user.roles,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -29,17 +38,24 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
 export async function verifySessionToken(token: string): Promise<SessionUser | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    if (
-      typeof payload.id !== 'string' ||
-      typeof payload.username !== 'string' ||
-      typeof payload.role !== 'string'
-    ) {
+    if (typeof payload.id !== 'string' || typeof payload.username !== 'string') {
       return null;
     }
+
+    let roles: Role[] = [];
+    if (Array.isArray(payload.roles)) {
+      roles = payload.roles.filter(isRole);
+    } else if (typeof payload.role === 'string' && isRole(payload.role)) {
+      // Compatibilidad con sesiones antiguas (un solo role)
+      roles = [payload.role];
+    }
+
+    if (roles.length === 0) return null;
+
     return {
       id: payload.id,
       username: payload.username,
-      role: payload.role as Role,
+      roles,
     };
   } catch {
     return null;

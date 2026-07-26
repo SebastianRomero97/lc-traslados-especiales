@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: Params) {
       destinos: { orderBy: { nombre: 'asc' } },
       celadoras: {
         include: {
-          user: { select: { id: true, username: true, active: true, role: true } },
+          user: { select: { id: true, username: true, active: true, roles: true } },
         },
       },
       transportes: {
@@ -48,7 +48,7 @@ export async function GET(_request: Request, { params }: Params) {
 
   const [celadorasDisponibles, transportesDisponibles, pasajerosDisponibles] = await Promise.all([
     prisma.user.findMany({
-      where: { role: 'CELADORA', active: true },
+      where: { roles: { has: 'CELADORA' }, active: true },
       orderBy: { username: 'asc' },
       select: { id: true, username: true },
     }),

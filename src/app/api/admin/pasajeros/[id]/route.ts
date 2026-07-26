@@ -24,9 +24,25 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const data: { nombre?: string; direccion?: string; active?: boolean } = {};
-    if (typeof body.nombre === 'string') data.nombre = body.nombre.trim();
-    if (typeof body.direccion === 'string') data.direccion = body.direccion.trim();
+    if (typeof body.nombre === 'string') {
+      const nombre = body.nombre.trim();
+      if (!nombre) {
+        return NextResponse.json({ message: 'El nombre no puede quedar vacío.' }, { status: 400 });
+      }
+      data.nombre = nombre;
+    }
+    if (typeof body.direccion === 'string') {
+      const direccion = body.direccion.trim();
+      if (!direccion) {
+        return NextResponse.json({ message: 'La dirección no puede quedar vacía.' }, { status: 400 });
+      }
+      data.direccion = direccion;
+    }
     if (typeof body.active === 'boolean') data.active = body.active;
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ message: 'No hay cambios para guardar.' }, { status: 400 });
+    }
 
     const pasajero = await prisma.pasajero.update({ where: { id }, data });
     return NextResponse.json({ data: pasajero, message: 'Pasajero actualizado.' });

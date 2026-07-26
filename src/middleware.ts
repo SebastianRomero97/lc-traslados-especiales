@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { COOKIE_NAME } from '@/lib/constants';
-import { ROLE_PANEL_PATH, type Role } from '@/lib/roles';
+import {
+  defaultPanelPath,
+  hasRole,
+  type Role,
+} from '@/lib/roles';
 
 const PANEL_ROLE: Record<string, Role> = {
   '/panel/admin': 'ADMIN',
@@ -10,6 +14,19 @@ const PANEL_ROLE: Record<string, Role> = {
   '/panel/celadora': 'CELADORA',
   '/panel/chofer': 'CHOFER',
 };
+
+type SessionPayload = { roles?: unknown; role?: unknown };
+
+function rolesFromPayload(payload: SessionPayload): Role[] {
+  const valid: Role[] = ['ADMIN', 'COORDINADORA', 'CELADORA', 'CHOFER'];
+  if (Array.isArray(payload.roles)) {
+    return payload.roles.filter((r): r is Role => valid.includes(r as Role));
+  }
+  if (typeof payload.role === 'string' && valid.includes(payload.role as Role)) {
+    return [payload.role as Role];
+  }
+  return [];
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -20,27 +37,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  let session: { role?: string } | null = null;
+  let roles: Role[] = [];
   if (token) {
     try {
       const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
-      session = payload as { role?: string };
+      roles = rolesFromPayload(payload as SessionPayload);
     } catch {
-      session = null;
+      roles = [];
     }
   }
 
+  const sessionUser = { roles };
+
   if (pathname.startsWith('/login')) {
-    if (session?.role && session.role in ROLE_PANEL_PATH) {
-      return NextResponse.redirect(
-        new URL(ROLE_PANEL_PATH[session.role as Role], request.url),
-      );
+    if (roles.length > 0) {
+      return NextResponse.redirect(new URL(defaultPanelPath(sessionUser), request.url));
     }
     return NextResponse.next();
   }
 
   if (pathname.startsWith('/panel')) {
-    if (!session?.role) {
+    if (roles.length === 0) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
@@ -50,12 +67,10 @@ export async function middleware(request: NextRequest) {
 
     // Admin puede entrar al panel de coordinadora para soporte
     const isAdminOnCoord =
-      session.role === 'ADMIN' && pathname.startsWith('/panel/coordinadora');
+      hasRole(sessionUser, 'ADMIN') && pathname.startsWith('/panel/coordinadora');
 
-    if (requiredRole && session.role !== requiredRole && !isAdminOnCoord) {
-      return NextResponse.redirect(
-        new URL(ROLE_PANEL_PATH[session.role as Role], request.url),
-      );
+    if (requiredRole && !hasRole(sessionUser, requiredRole) && !isAdminOnCoord) {
+      return NextResponse.redirect(new URL(defaultPanelPath(sessionUser), request.url));
     }
   }
 

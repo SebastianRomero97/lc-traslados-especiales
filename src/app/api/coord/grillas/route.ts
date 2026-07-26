@@ -142,7 +142,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!chofer || chofer.role !== 'CHOFER') {
+    if (!chofer || !chofer.roles.includes('CHOFER')) {
       return NextResponse.json(
         { message: 'El chofer seleccionado no es válido. Elegí un usuario con rol Chofer.' },
         { status: 400 },
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
 
     if (celadoraId) {
       const celadora = await prisma.user.findUnique({ where: { id: celadoraId } });
-      if (!celadora || celadora.role !== 'CELADORA') {
+      if (!celadora || !celadora.roles.includes('CELADORA')) {
         return NextResponse.json(
           { message: 'La celadora seleccionada no es válida.' },
           { status: 400 },

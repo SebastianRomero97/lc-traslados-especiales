@@ -1,18 +1,21 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
-import { ROLE_LABEL, type Role } from '@/lib/roles';
+import {
+  ASSIGNABLE_ROLES,
+  compareUsersForAdminList,
+  ROLE_LABEL,
+  type Role,
+} from '@/lib/roles';
 
 type AdminUser = {
   id: string;
   username: string;
-  role: Role;
+  roles: Role[];
   active: boolean;
   createdAt: string;
 };
-
-const ASSIGNABLE_ROLES: Role[] = ['COORDINADORA', 'CELADORA', 'CHOFER'];
 
 export function AdminUsersManager({ currentUserId }: { currentUserId: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -24,7 +27,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
   const [form, setForm] = useState({
     username: '',
     password: '',
-    role: 'CELADORA' as Role,
+    roles: ['CELADORA'] as Role[],
   });
 
   const loadUsers = useCallback(async () => {
@@ -48,13 +51,30 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     void loadUsers();
   }, [loadUsers]);
 
+  const sortedUsers = useMemo(
+    () => [...users].sort(compareUsersForAdminList),
+    [users],
+  );
+
+  const toggleRole = (role: Role) => {
+    setForm((prev) => {
+      const has = prev.roles.includes(role);
+      const roles = has ? prev.roles.filter((r) => r !== role) : [...prev.roles, role];
+      return { ...prev, roles };
+    });
+  };
+
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     setFeedback(null);
 
     const missing = missingFieldsMessage(
-      { username: form.username, password: form.password, role: form.role },
-      { username: 'usuario', password: 'contraseña', role: 'entidad' },
+      {
+        username: form.username,
+        password: form.password,
+        roles: form.roles.length > 0 ? 'ok' : '',
+      },
+      { username: 'usuario', password: 'contraseña', roles: 'al menos un rol' },
     );
     if (missing) {
       setFeedback({ type: 'error', message: missing });
@@ -67,7 +87,11 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       const response = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          username: form.username,
+          password: form.password,
+          roles: form.roles,
+        }),
       });
 
       if (!response.ok) {
@@ -79,7 +103,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       }
 
       const body = (await response.json()) as { message?: string };
-      setForm({ username: '', password: '', role: 'CELADORA' });
+      setForm({ username: '', password: '', roles: ['CELADORA'] });
       setFeedback({ type: 'success', message: body.message ?? 'Usuario creado.' });
       await loadUsers();
     } catch {
@@ -125,7 +149,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       <section className="admin-users__create panel-card">
         <h2>Crear usuario</h2>
         <p className="panel-card__desc">
-          Solo el Admin puede dar de alta usuarios. Asigná usuario, contraseña y entidad.
+          Solo el Admin puede dar de alta usuarios. Podés asignar uno o más roles (excepto Admin).
         </p>
 
         <form className="admin-users__form" onSubmit={handleCreate}>
@@ -153,23 +177,30 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="role">Entidad</label>
-            <select
-              id="role"
-              value={form.role}
-              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as Role }))}
-              required
-            >
+          <fieldset className="form-group admin-users__roles">
+            <legend>Roles</legend>
+            <p className="panel-card__desc" style={{ marginTop: 0 }}>
+              Marcá todos los que correspondan. Ejemplo: Celadora + Coordinadora.
+            </p>
+            <div className="admin-users__role-checks">
               {ASSIGNABLE_ROLES.map((role) => (
-                <option key={role} value={role}>
+                <label key={role} className="admin-users__role-check">
+                  <input
+                    type="checkbox"
+                    checked={form.roles.includes(role)}
+                    onChange={() => toggleRole(role)}
+                  />
                   {ROLE_LABEL[role]}
-                </option>
+                </label>
               ))}
-            </select>
-          </div>
+            </div>
+          </fieldset>
 
-          <button type="submit" className="btn btn--primary" disabled={submitting}>
+          <button
+            type="submit"
+            className="btn btn--primary"
+            disabled={submitting || form.roles.length === 0}
+          >
             {submitting ? 'Creando...' : 'Crear usuario'}
           </button>
         </form>
@@ -193,21 +224,29 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
               <thead>
                 <tr>
                   <th>Usuario</th>
-                  <th>Entidad</th>
+                  <th>Roles</th>
                   <th>Estado</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => {
-                  const canDelete = user.id !== currentUserId && user.role !== 'ADMIN';
+                {sortedUsers.map((user) => {
+                  const isAdmin = user.roles.includes('ADMIN');
+                  const canDelete = user.id !== currentUserId && !isAdmin;
                   return (
                     <tr key={user.id}>
                       <td>{user.username}</td>
                       <td>
-                        <span className={`role-badge role-badge--${user.role.toLowerCase()}`}>
-                          {ROLE_LABEL[user.role]}
-                        </span>
+                        <div className="admin-users__role-list">
+                          {user.roles.map((role) => (
+                            <span
+                              key={role}
+                              className={`role-badge role-badge--${role.toLowerCase()}`}
+                            >
+                              {ROLE_LABEL[role]}
+                            </span>
+                          ))}
+                        </div>
                       </td>
                       <td>{user.active ? 'Activo' : 'Inactivo'}</td>
                       <td>

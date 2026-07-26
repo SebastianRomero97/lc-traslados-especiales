@@ -8,7 +8,7 @@ export async function GET() {
 
   const [choferes, transportes] = await Promise.all([
     prisma.user.findMany({
-      where: { role: 'CHOFER' },
+      where: { roles: { has: 'CHOFER' } },
       orderBy: { username: 'asc' },
       select: {
         id: true,

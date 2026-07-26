@@ -31,7 +31,7 @@ type AreaDetail = {
   nombre: string;
   active: boolean;
   destinos: Destino[];
-  celadoras: { user: OptionUser & { active: boolean; role: string } }[];
+  celadoras: { user: OptionUser & { active: boolean; roles: string[] } }[];
   transportes: {
     transporte: OptionTransporte & {
       celadoras: { user: OptionUser }[];
@@ -60,6 +60,15 @@ export function CoordinadoraDashboard() {
   const [pickCeladora, setPickCeladora] = useState('');
   const [pickTransporte, setPickTransporte] = useState('');
   const [pickPasajero, setPickPasajero] = useState('');
+  const [openAssign, setOpenAssign] = useState({
+    celadoras: true,
+    transportes: true,
+    pasajeros: false,
+  });
+
+  const toggleAssign = (key: keyof typeof openAssign) => {
+    setOpenAssign((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const loadAreas = useCallback(async () => {
     const response = await fetch('/api/coord/areas');
@@ -325,210 +334,276 @@ export function CoordinadoraDashboard() {
 
           <section className="panel-card">
             <h2>Asignaciones — {detail.nombre}</h2>
+            <p className="panel-card__desc">
+              Tocá cada sección para expandir o plegar el listado.
+            </p>
 
             <div className="coord-assign-grid">
-              <div>
-                <h3>Celadoras</h3>
-                <div className="coord-assign-row">
-                  <select
-                    value={pickCeladora}
-                    onChange={(e) => setPickCeladora(e.target.value)}
-                    className="admin-inline-select"
-                  >
-                    <option value="">Elegir celadora</option>
-                    {options.celadoras
-                      .filter((c) => !assignedCeladoraIds.has(c.id))
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.username}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    disabled={!pickCeladora}
-                    onClick={() => {
-                      void assign({ action: 'add_celadora', userId: pickCeladora }).then(() =>
-                        setPickCeladora(''),
-                      );
-                    }}
-                  >
-                    Asignar
-                  </button>
-                </div>
-                <ul className="coord-chip-list">
-                  {detail.celadoras.map(({ user }) => (
-                    <li key={user.id} className="coord-chip">
-                      <span>{user.username}</span>
+              <div className="coord-assign-block">
+                <button
+                  type="button"
+                  className="coord-assign-toggle"
+                  aria-expanded={openAssign.celadoras}
+                  onClick={() => toggleAssign('celadoras')}
+                >
+                  <span className="coord-assign-toggle__title">
+                    <span aria-hidden="true">{openAssign.celadoras ? '▼' : '▶'}</span>
+                    Celadoras
+                  </span>
+                  <span className="coord-assign-count">{detail.celadoras.length}</span>
+                </button>
+                {openAssign.celadoras && (
+                  <div className="coord-assign-body">
+                    <div className="coord-assign-row">
+                      <select
+                        value={pickCeladora}
+                        onChange={(e) => setPickCeladora(e.target.value)}
+                        className="admin-inline-select"
+                      >
+                        <option value="">Elegir celadora</option>
+                        {options.celadoras
+                          .filter((c) => !assignedCeladoraIds.has(c.id))
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.username}
+                            </option>
+                          ))}
+                      </select>
                       <button
                         type="button"
-                        className="coord-chip__remove"
-                        onClick={() =>
-                          void assign({ action: 'remove_celadora', userId: user.id })
-                        }
+                        className="btn btn--primary btn--sm"
+                        disabled={!pickCeladora}
+                        onClick={() => {
+                          void assign({ action: 'add_celadora', userId: pickCeladora }).then(() =>
+                            setPickCeladora(''),
+                          );
+                        }}
                       >
-                        ×
+                        Asignar
                       </button>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                    <ul className="coord-chip-list coord-chip-list--scroll">
+                      {detail.celadoras.length === 0 ? (
+                        <li className="coord-assign-empty">Sin celadoras asignadas.</li>
+                      ) : (
+                        detail.celadoras.map(({ user }) => (
+                          <li key={user.id} className="coord-chip">
+                            <span>{user.username}</span>
+                            <button
+                              type="button"
+                              className="coord-chip__remove"
+                              onClick={() =>
+                                void assign({ action: 'remove_celadora', userId: user.id })
+                              }
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <h3>Transportes</h3>
-                <div className="coord-assign-row">
-                  <select
-                    value={pickTransporte}
-                    onChange={(e) => setPickTransporte(e.target.value)}
-                    className="admin-inline-select"
-                  >
-                    <option value="">Elegir transporte</option>
-                    {options.transportes
-                      .filter((t) => !assignedTransporteIds.has(t.id))
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.nombre} ({t.tipo})
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    disabled={!pickTransporte}
-                    onClick={() => {
-                      void assign({ action: 'add_transporte', transporteId: pickTransporte }).then(
-                        () => setPickTransporte(''),
-                      );
-                    }}
-                  >
-                    Asignar
-                  </button>
-                </div>
-                <ul className="coord-chip-list">
-                  {detail.transportes.map(({ transporte }) => (
-                    <li key={transporte.id} className="coord-chip coord-chip--block">
-                      <div className="coord-chip__main">
-                        <strong>
-                          {transporte.nombre} ({transporte.tipo})
-                        </strong>
-                        <button
-                          type="button"
-                          className="coord-chip__remove"
-                          onClick={() =>
-                            void assign({
-                              action: 'remove_transporte',
-                              transporteId: transporte.id,
-                            })
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="coord-assign-row">
-                        <select
-                          className="admin-inline-select"
-                          defaultValue=""
-                          onChange={(e) => {
-                            const userId = e.target.value;
-                            if (!userId) return;
-                            void assign({
-                              action: 'set_transporte_celadora',
-                              transporteId: transporte.id,
-                              userId,
-                            });
-                            e.target.value = '';
-                          }}
-                        >
-                          <option value="">Asignar celadora al transporte</option>
-                          {detail.celadoras
-                            .filter(
-                              (c) =>
-                                !transporte.celadoras.some((tc) => tc.user.id === c.user.id),
-                            )
-                            .map(({ user }) => (
-                              <option key={user.id} value={user.id}>
-                                {user.username}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                      {transporte.celadoras.length > 0 && (
-                        <ul className="coord-chip-list">
-                          {transporte.celadoras.map(({ user }) => (
-                            <li key={user.id} className="coord-chip">
-                              <span>{user.username}</span>
+              <div className="coord-assign-block">
+                <button
+                  type="button"
+                  className="coord-assign-toggle"
+                  aria-expanded={openAssign.transportes}
+                  onClick={() => toggleAssign('transportes')}
+                >
+                  <span className="coord-assign-toggle__title">
+                    <span aria-hidden="true">{openAssign.transportes ? '▼' : '▶'}</span>
+                    Transportes
+                  </span>
+                  <span className="coord-assign-count">{detail.transportes.length}</span>
+                </button>
+                {openAssign.transportes && (
+                  <div className="coord-assign-body">
+                    <div className="coord-assign-row">
+                      <select
+                        value={pickTransporte}
+                        onChange={(e) => setPickTransporte(e.target.value)}
+                        className="admin-inline-select"
+                      >
+                        <option value="">Elegir transporte</option>
+                        {options.transportes
+                          .filter((t) => !assignedTransporteIds.has(t.id))
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.nombre} ({t.tipo})
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        disabled={!pickTransporte}
+                        onClick={() => {
+                          void assign({
+                            action: 'add_transporte',
+                            transporteId: pickTransporte,
+                          }).then(() => setPickTransporte(''));
+                        }}
+                      >
+                        Asignar
+                      </button>
+                    </div>
+                    <ul className="coord-chip-list coord-chip-list--scroll">
+                      {detail.transportes.length === 0 ? (
+                        <li className="coord-assign-empty">Sin transportes asignados.</li>
+                      ) : (
+                        detail.transportes.map(({ transporte }) => (
+                          <li key={transporte.id} className="coord-chip coord-chip--block">
+                            <div className="coord-chip__main">
+                              <strong>
+                                {transporte.nombre} ({transporte.tipo})
+                              </strong>
                               <button
                                 type="button"
                                 className="coord-chip__remove"
                                 onClick={() =>
                                   void assign({
-                                    action: 'clear_transporte_celadora',
+                                    action: 'remove_transporte',
                                     transporteId: transporte.id,
-                                    userId: user.id,
                                   })
                                 }
                               >
                                 ×
                               </button>
-                            </li>
-                          ))}
-                        </ul>
+                            </div>
+                            <div className="coord-assign-row">
+                              <select
+                                className="admin-inline-select"
+                                defaultValue=""
+                                onChange={(e) => {
+                                  const userId = e.target.value;
+                                  if (!userId) return;
+                                  void assign({
+                                    action: 'set_transporte_celadora',
+                                    transporteId: transporte.id,
+                                    userId,
+                                  });
+                                  e.target.value = '';
+                                }}
+                              >
+                                <option value="">Asignar celadora al transporte</option>
+                                {detail.celadoras
+                                  .filter(
+                                    (c) =>
+                                      !transporte.celadoras.some(
+                                        (tc) => tc.user.id === c.user.id,
+                                      ),
+                                  )
+                                  .map(({ user }) => (
+                                    <option key={user.id} value={user.id}>
+                                      {user.username}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            {transporte.celadoras.length > 0 && (
+                              <ul className="coord-chip-list">
+                                {transporte.celadoras.map(({ user }) => (
+                                  <li key={user.id} className="coord-chip">
+                                    <span>{user.username}</span>
+                                    <button
+                                      type="button"
+                                      className="coord-chip__remove"
+                                      onClick={() =>
+                                        void assign({
+                                          action: 'clear_transporte_celadora',
+                                          transporteId: transporte.id,
+                                          userId: user.id,
+                                        })
+                                      }
+                                    >
+                                      ×
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        ))
                       )}
-                    </li>
-                  ))}
-                </ul>
+                    </ul>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <h3>Pasajeros</h3>
-                <div className="coord-assign-row">
-                  <select
-                    value={pickPasajero}
-                    onChange={(e) => setPickPasajero(e.target.value)}
-                    className="admin-inline-select"
-                  >
-                    <option value="">Elegir pasajero</option>
-                    {options.pasajeros
-                      .filter((p) => !assignedPasajeroIds.has(p.id))
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.nombre}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    disabled={!pickPasajero}
-                    onClick={() => {
-                      void assign({ action: 'add_pasajero', pasajeroId: pickPasajero }).then(() =>
-                        setPickPasajero(''),
-                      );
-                    }}
-                  >
-                    Asignar
-                  </button>
-                </div>
-                <ul className="coord-chip-list">
-                  {detail.pasajeros.map(({ pasajero }) => (
-                    <li key={pasajero.id} className="coord-chip">
-                      <span>
-                        {pasajero.nombre}
-                        <small> — {pasajero.direccion}</small>
-                      </span>
+              <div className="coord-assign-block">
+                <button
+                  type="button"
+                  className="coord-assign-toggle"
+                  aria-expanded={openAssign.pasajeros}
+                  onClick={() => toggleAssign('pasajeros')}
+                >
+                  <span className="coord-assign-toggle__title">
+                    <span aria-hidden="true">{openAssign.pasajeros ? '▼' : '▶'}</span>
+                    Pasajeros
+                  </span>
+                  <span className="coord-assign-count">{detail.pasajeros.length}</span>
+                </button>
+                {openAssign.pasajeros && (
+                  <div className="coord-assign-body">
+                    <div className="coord-assign-row">
+                      <select
+                        value={pickPasajero}
+                        onChange={(e) => setPickPasajero(e.target.value)}
+                        className="admin-inline-select"
+                      >
+                        <option value="">Elegir pasajero</option>
+                        {options.pasajeros
+                          .filter((p) => !assignedPasajeroIds.has(p.id))
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre}
+                            </option>
+                          ))}
+                      </select>
                       <button
                         type="button"
-                        className="coord-chip__remove"
-                        onClick={() =>
-                          void assign({ action: 'remove_pasajero', pasajeroId: pasajero.id })
-                        }
+                        className="btn btn--primary btn--sm"
+                        disabled={!pickPasajero}
+                        onClick={() => {
+                          void assign({ action: 'add_pasajero', pasajeroId: pickPasajero }).then(
+                            () => setPickPasajero(''),
+                          );
+                        }}
                       >
-                        ×
+                        Asignar
                       </button>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                    <ul className="coord-chip-list coord-chip-list--scroll">
+                      {detail.pasajeros.length === 0 ? (
+                        <li className="coord-assign-empty">Sin pasajeros asignados.</li>
+                      ) : (
+                        detail.pasajeros.map(({ pasajero }) => (
+                          <li key={pasajero.id} className="coord-chip">
+                            <span>
+                              {pasajero.nombre}
+                              <small> — {pasajero.direccion}</small>
+                            </span>
+                            <button
+                              type="button"
+                              className="coord-chip__remove"
+                              onClick={() =>
+                                void assign({
+                                  action: 'remove_pasajero',
+                                  pasajeroId: pasajero.id,
+                                })
+                              }
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           </section>

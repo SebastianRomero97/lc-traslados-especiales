@@ -858,9 +858,12 @@ export function CoordinadoraGrillasManager() {
                       <button
                         type="button"
                         className="btn btn--outline btn--sm"
-                        onClick={() => setSelectedId(g.id)}
+                        onClick={() =>
+                          setSelectedId((current) => (current === g.id ? null : g.id))
+                        }
+                        aria-expanded={selectedId === g.id}
                       >
-                        Ver
+                        {selectedId === g.id ? 'Ocultar' : 'Ver'}
                       </button>
                       <button
                         type="button"

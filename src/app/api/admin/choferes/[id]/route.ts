@@ -17,7 +17,7 @@ export async function PATCH(request: Request, { params }: Params) {
     };
 
     const chofer = await prisma.user.findUnique({ where: { id } });
-    if (!chofer || chofer.role !== 'CHOFER') {
+    if (!chofer || !chofer.roles.includes('CHOFER')) {
       return NextResponse.json({ message: 'Chofer no encontrado.' }, { status: 404 });
     }
 

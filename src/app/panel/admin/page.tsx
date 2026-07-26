@@ -1,5 +1,6 @@
 import { PanelShell, requireRole } from '@/components/panel/PanelShell';
 import { AdminDashboard } from '@/components/panel/AdminDashboard';
+import { welcomeHeading } from '@/lib/greeting';
 
 export default async function AdminPanelPage() {
   const user = await requireRole('ADMIN');
@@ -7,7 +8,7 @@ export default async function AdminPanelPage() {
   return (
     <PanelShell user={user} title="Panel Admin">
       <section className="panel-intro">
-        <h2>Bienvenida, {user.username}</h2>
+        <h2>{welcomeHeading(user.username)}</h2>
         <p>
           Gestioná usuarios, transportes, pasajeros y la asignación de vehículos a choferes.
         </p>

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ message: 'Falta userId.' }, { status: 400 });
         }
         const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user || user.role !== 'CELADORA') {
+        if (!user || !user.roles.includes('CELADORA')) {
           return NextResponse.json({ message: 'La celadora no es válida.' }, { status: 400 });
         }
         await prisma.areaCeladora.upsert({
