@@ -34,6 +34,17 @@ export function todayFechaInput(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Clave YYYY-MM-DD comparable con todayFechaInput / inputs date. */
+export function fechaGrillaKey(fecha: Date | string): string {
+  if (typeof fecha === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}/.test(fecha)) return fecha.slice(0, 10);
+    const d = new Date(fecha);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return fecha.slice(0, 10);
+  }
+  return fecha.toISOString().slice(0, 10);
+}
+
 export function buildGrillaTitulo(params: {
   tipoItinerario: 'INGRESO' | 'SALIDA';
   transporteNombre: string;
@@ -62,6 +73,40 @@ export function normalizeAccion(accion: string): AccionParada {
   if (accion === 'BAJA') return 'BAJA';
   if (accion === 'TRASBORDO') return 'TRASBORDO';
   return 'SUBE';
+}
+
+/** Acción esperada según tipo de parada e itinerario (Ingresos vs Salidas). */
+export function accionPorTipoParada(
+  tipoParada: TipoParadaForm,
+  tipoItinerario: 'INGRESO' | 'SALIDA',
+): AccionParada {
+  if (tipoParada === 'trasbordo') return 'TRASBORDO';
+  // Ingresos: suben en domicilio, bajan en destino.
+  // Salidas: suben en destino, bajan en domicilio.
+  if (tipoParada === 'destino') {
+    return tipoItinerario === 'INGRESO' ? 'BAJA' : 'SUBE';
+  }
+  return tipoItinerario === 'INGRESO' ? 'SUBE' : 'BAJA';
+}
+
+export function invertirAccionSubeBaja(accion: AccionParada): AccionParada {
+  if (accion === 'SUBE') return 'BAJA';
+  if (accion === 'BAJA') return 'SUBE';
+  return accion;
+}
+
+/** Texto de detalle para fila de destino, con nombres si están disponibles. */
+export function buildDetalleDestino(params: {
+  destinoNombre: string;
+  accion: AccionParada;
+  pasajeroNombres?: string[];
+}): string {
+  const names = (params.pasajeroNombres ?? []).map((n) => n.trim()).filter(Boolean);
+  if (names.length === 0) {
+    return `pasajeros → ${params.destinoNombre}`;
+  }
+  const verbo = params.accion === 'SUBE' ? 'Suben' : 'Bajan';
+  return `${verbo}: ${names.join(', ')}`;
 }
 
 export function inferTipoParada(fila: {

@@ -1,4 +1,6 @@
 import { PanelShell, requireRole } from '@/components/panel/PanelShell';
+import { OperativoPanel } from '@/components/panel/OperativoPanel';
+import { PublicacionesBanner } from '@/components/panel/PublicacionesBanner';
 import { welcomeHeading } from '@/lib/greeting';
 
 export default async function CeladoraPanelPage() {
@@ -6,13 +8,16 @@ export default async function CeladoraPanelPage() {
 
   return (
     <PanelShell user={user} title="Panel Celadora">
-      <section className="panel-placeholder">
+      <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>
-          Acá vas a ver tu grilla, iniciar/finalizar recorrido y registrar la asistencia de cada
-          pasajero. Próximamente.
+          Revisá tu grilla, iniciá/finalizá el tramo de pasajeros, registrá asistencia y completá el
+          informe.
         </p>
       </section>
+
+      <PublicacionesBanner />
+      <OperativoPanel rol="CELADORA" />
     </PanelShell>
   );
 }

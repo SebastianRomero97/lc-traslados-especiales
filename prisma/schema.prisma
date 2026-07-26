@@ -28,6 +28,21 @@ enum AccionParada {
   TRASBORDO
 }
 
+enum EstadoAsistencia {
+  ASISTIO
+  CANCELO
+  NO_SE_PRESENTO
+}
+
+/// Nivel de combustible estandarizado (fracción de tanque) para comparar entre vehículos.
+enum NivelCombustible {
+  VACIO
+  CUARTO
+  MEDIO
+  TRES_CUARTOS
+  LLENO
+}
+
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -48,6 +63,9 @@ model User {
   grillasComoChofer   Grilla[] @relation("GrillaChofer")
   grillasComoCeladora Grilla[] @relation("GrillaCeladora")
   grillasCreadas      Grilla[] @relation("GrillaCreador")
+  asistenciasRegistradas Asistencia[] @relation("AsistenciaRegistrador")
+  novedadesVehiculo      NovedadVehiculo[] @relation("NovedadVehiculoAutor")
+  publicacionesCreadas   Publicacion[] @relation("PublicacionAutor")
 }
 
 model Transporte {
@@ -63,6 +81,7 @@ model Transporte {
   areas     AreaTransporte[]
   celadoras TransporteCeladora[]
   grillas   Grilla[]
+  novedades NovedadVehiculo[]
 }
 
 model Pasajero {
@@ -75,6 +94,7 @@ model Pasajero {
 
   areas AreaPasajero[]
   filas GrillaFila[]
+  asistencias Asistencia[]
 }
 
 model Area {
@@ -101,7 +121,8 @@ model Destino {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  filas GrillaFila[]
+  filas         GrillaFila[]
+  areaPasajeros AreaPasajero[]
 
   @@index([areaId])
 }
@@ -127,10 +148,14 @@ model AreaTransporte {
 model AreaPasajero {
   areaId     String
   pasajeroId String
+  /// Destino habitual del pasajero en esta área (quién baja/sube ahí).
+  destinoId  String?
   area       Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
   pasajero   Pasajero @relation(fields: [pasajeroId], references: [id], onDelete: Cascade)
+  destino    Destino? @relation(fields: [destinoId], references: [id], onDelete: SetNull)
 
   @@id([areaId, pasajeroId])
+  @@index([destinoId])
 }
 
 model TransporteCeladora {
@@ -165,7 +190,23 @@ model Grilla {
   createdById String
   createdBy   User   @relation("GrillaCreador", fields: [createdById], references: [id], onDelete: Restrict)
 
-  filas GrillaFila[]
+  /// Reloj chofer: manejo del vehículo
+  choferInicioAt DateTime?
+  choferFinAt    DateTime?
+  /// Reloj celadora: subida / operación con pasajeros
+  celadoraInicioAt DateTime?
+  celadoraFinAt    DateTime?
+
+  informeChofer   String?
+  informeCeladora String?
+
+  /// Informe estructurado del chofer (cierre de jornada)
+  informeChoferCeladora  String?
+  informeChoferVehiculo  String?
+  combustibleNivel       NivelCombustible?
+
+  filas        GrillaFila[]
+  asistencias  Asistencia[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -193,4 +234,57 @@ model GrillaFila {
   trasbordoHacia String?
 
   @@index([grillaId])
+}
+
+/// Asistencia de un pasajero en una grilla (una por pasajero/nombre en el recorrido)
+model Asistencia {
+  id                String           @id @default(cuid())
+  grillaId          String
+  grilla            Grilla           @relation(fields: [grillaId], references: [id], onDelete: Cascade)
+  pasajeroId        String?
+  pasajero          Pasajero?        @relation(fields: [pasajeroId], references: [id], onDelete: SetNull)
+  pasajeroNombre    String
+  estado            EstadoAsistencia
+  motivoCancelacion String?
+  registradoPorId   String
+  registradoPor     User             @relation("AsistenciaRegistrador", fields: [registradoPorId], references: [id], onDelete: Restrict)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([grillaId, pasajeroNombre])
+  @@index([grillaId])
+  @@index([pasajeroId])
+}
+
+/// Novedad / aviso del chofer sobre su vehículo (visible Admin y Coordinadora)
+model NovedadVehiculo {
+  id           String   @id @default(cuid())
+  mensaje      String
+  transporteId String
+  transporte   Transporte @relation(fields: [transporteId], references: [id], onDelete: Cascade)
+  reportadoPorId String
+  reportadoPor   User   @relation("NovedadVehiculoAutor", fields: [reportadoPorId], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+
+  @@index([transporteId])
+  @@index([createdAt])
+}
+
+/// Aviso del Admin hacia roles operativos (con vigencia)
+model Publicacion {
+  id          String   @id @default(cuid())
+  titulo      String
+  cuerpo      String
+  /// Roles destinatarios: COORDINADORA, CELADORA y/o CHOFER (selección manual del Admin)
+  roles       Role[]
+  startsAt    DateTime @default(now())
+  endsAt      DateTime
+  active      Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("PublicacionAutor", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([endsAt])
+  @@index([active])
 }

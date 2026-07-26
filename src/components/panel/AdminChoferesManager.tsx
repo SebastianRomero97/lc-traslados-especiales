@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type TransporteOption = { id: string; nombre: string; tipo: string };
 
@@ -14,12 +15,10 @@ type Chofer = {
 };
 
 export function AdminChoferesManager() {
+  const popup = usePanelPopup();
   const [choferes, setChoferes] = useState<Chofer[]>([]);
   const [transportes, setTransportes] = useState<TransporteOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -27,16 +26,17 @@ export function AdminChoferesManager() {
       const response = await fetch('/api/admin/choferes');
       const body = await response.json();
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar.' });
+        popup.error(body.message ?? 'No se pudieron cargar los choferes.');
         return;
       }
       setChoferes(body.data.choferes as Chofer[]);
       setTransportes(body.data.transportes as TransporteOption[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.' });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -44,36 +44,29 @@ export function AdminChoferesManager() {
   }, [load]);
 
   const assignTransporte = async (choferId: string, transporteId: string) => {
-    setFeedback(null);
     const response = await fetch(`/api/admin/choferes/${choferId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transporteId: transporteId === '' ? null : transporteId }),
     });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo asignar el transporte.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo asignar el transporte.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
-    setFeedback({ type: 'success', message: body.message ?? 'Asignación actualizada.' });
+    popup.success(body.message ?? 'Asignación actualizada.');
     await load();
   };
 
   return (
     <div className="admin-section">
+      {popup.popupNode}
       <section className="panel-card">
         <h2>Choferes y vehículos</h2>
         <p className="panel-card__desc">
           Primero creá el usuario con entidad Chofer en la pestaña Usuarios. Acá le asignás el
           transporte.
         </p>
-
-        {feedback && (
-          <p className={`form-feedback form-feedback--${feedback.type}`}>{feedback.message}</p>
-        )}
 
         {loading ? (
           <p className="panel-card__desc">Cargando...</p>
@@ -95,7 +88,7 @@ export function AdminChoferesManager() {
                 {choferes.map((chofer) => (
                   <tr key={chofer.id}>
                     <td>{chofer.username}</td>
-                    <td>{chofer.active ? 'Activo' : 'Inactivo'}</td>
+                    <td>{chofer.active ? 'Activo' : 'No disponible'}</td>
                     <td>
                       <select
                         className="admin-inline-select"

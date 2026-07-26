@@ -8,6 +8,7 @@ import {
   ROLE_LABEL,
   type Role,
 } from '@/lib/roles';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type AdminUser = {
   id: string;
@@ -17,17 +18,27 @@ type AdminUser = {
   createdAt: string;
 };
 
+type EditForm = {
+  username: string;
+  active: boolean;
+  roles: Role[];
+};
+
 export function AdminUsersManager({ currentUserId }: { currentUserId: string }) {
+  const popup = usePanelPopup();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
   const [form, setForm] = useState({
     username: '',
     password: '',
     roles: ['CELADORA'] as Role[],
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({
+    username: '',
+    active: true,
+    roles: [],
   });
 
   const loadUsers = useCallback(async () => {
@@ -36,25 +47,25 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       const response = await fetch('/api/admin/users');
       const body = await response.json();
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar los usuarios.' });
+        popup.error(body.message ?? 'No se pudieron cargar los usuarios.');
         return;
       }
       setUsers(body.data as AdminUser[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión al cargar usuarios. Revisá que el servidor esté en marcha.' });
+      popup.error(
+        'Error de conexión al cargar usuarios. Revisá que el servidor esté en marcha.',
+      );
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   useEffect(() => {
     void loadUsers();
   }, [loadUsers]);
 
-  const sortedUsers = useMemo(
-    () => [...users].sort(compareUsersForAdminList),
-    [users],
-  );
+  const sortedUsers = useMemo(() => [...users].sort(compareUsersForAdminList), [users]);
 
   const toggleRole = (role: Role) => {
     setForm((prev) => {
@@ -64,9 +75,30 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     });
   };
 
+  const toggleEditRole = (role: Role) => {
+    setEditForm((prev) => {
+      const has = prev.roles.includes(role);
+      const roles = has ? prev.roles.filter((r) => r !== role) : [...prev.roles, role];
+      return { ...prev, roles };
+    });
+  };
+
+  const startEdit = (user: AdminUser) => {
+    setEditingId(user.id);
+    setEditForm({
+      username: user.username,
+      active: user.active,
+      roles: [...user.roles],
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({ username: '', active: true, roles: [] });
+  };
+
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    setFeedback(null);
 
     const missing = missingFieldsMessage(
       {
@@ -77,7 +109,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       { username: 'usuario', password: 'contraseña', roles: 'al menos un rol' },
     );
     if (missing) {
-      setFeedback({ type: 'error', message: missing });
+      popup.error(missing);
       return;
     }
 
@@ -95,22 +127,63 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       });
 
       if (!response.ok) {
-        setFeedback({
-          type: 'error',
-          message: await readApiError(response, 'No se pudo crear el usuario.'),
-        });
+        popup.error(await readApiError(response, 'No se pudo crear el usuario.'));
         return;
       }
 
       const body = (await response.json()) as { message?: string };
       setForm({ username: '', password: '', roles: ['CELADORA'] });
-      setFeedback({ type: 'success', message: body.message ?? 'Usuario creado.' });
+      popup.success(body.message ?? 'Usuario creado.');
       await loadUsers();
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión al crear el usuario. Revisá que el servidor esté en marcha.',
+      popup.error(
+        'Error de conexión al crear el usuario. Revisá que el servidor esté en marcha.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveEdit = async (user: AdminUser) => {
+    const isAdmin = user.roles.includes('ADMIN');
+
+    if (!editForm.username.trim() || editForm.username.trim().length < 2) {
+      popup.error('El usuario debe tener al menos 2 caracteres.');
+      return;
+    }
+
+    if (!isAdmin && editForm.roles.length === 0) {
+      popup.error('Seleccioná al menos un rol.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload: { username: string; active: boolean; roles?: Role[] } = {
+        username: editForm.username.trim(),
+        active: editForm.active,
+      };
+      if (!isAdmin) {
+        payload.roles = editForm.roles;
+      }
+
+      const response = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
+
+      if (!response.ok) {
+        popup.error(await readApiError(response, 'No se pudo actualizar el usuario.'));
+        return;
+      }
+
+      const body = (await response.json()) as { message?: string };
+      popup.success(body.message ?? 'Usuario actualizado.');
+      cancelEdit();
+      await loadUsers();
+    } catch {
+      popup.error('Error de conexión al actualizar. Revisá que el servidor esté en marcha.');
     } finally {
       setSubmitting(false);
     }
@@ -118,34 +191,32 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
 
   const handleDelete = async (user: AdminUser) => {
     if (user.id === currentUserId) return;
-    const confirmed = window.confirm(`¿Eliminar al usuario "${user.username}"?`);
+    const confirmed = await popup.confirm({
+      message: `¿Eliminar al usuario "${user.username}"?`,
+      confirmLabel: 'Eliminar',
+    });
     if (!confirmed) return;
 
-    setFeedback(null);
     try {
       const response = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
 
       if (!response.ok) {
-        setFeedback({
-          type: 'error',
-          message: await readApiError(response, 'No se pudo eliminar el usuario.'),
-        });
+        popup.error(await readApiError(response, 'No se pudo eliminar el usuario.'));
         return;
       }
 
       const body = (await response.json()) as { message?: string };
-      setFeedback({ type: 'success', message: body.message ?? 'Usuario eliminado.' });
+      popup.success(body.message ?? 'Usuario eliminado.');
+      if (editingId === user.id) cancelEdit();
       await loadUsers();
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión al eliminar. Revisá que el servidor esté en marcha.',
-      });
+      popup.error('Error de conexión al eliminar. Revisá que el servidor esté en marcha.');
     }
   };
 
   return (
     <div className="admin-users">
+      {popup.popupNode}
       <section className="admin-users__create panel-card">
         <h2>Crear usuario</h2>
         <p className="panel-card__desc">
@@ -204,12 +275,6 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
             {submitting ? 'Creando...' : 'Crear usuario'}
           </button>
         </form>
-
-        {feedback && (
-          <p className={`form-feedback form-feedback--${feedback.type}`} role="status">
-            {feedback.message}
-          </p>
-        )}
       </section>
 
       <section className="admin-users__list panel-card">
@@ -233,33 +298,111 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                 {sortedUsers.map((user) => {
                   const isAdmin = user.roles.includes('ADMIN');
                   const canDelete = user.id !== currentUserId && !isAdmin;
+                  const isEditing = editingId === user.id;
+
                   return (
-                    <tr key={user.id}>
-                      <td>{user.username}</td>
+                    <tr key={user.id} className={isEditing ? 'is-selected' : undefined}>
                       <td>
-                        <div className="admin-users__role-list">
-                          {user.roles.map((role) => (
-                            <span
-                              key={role}
-                              className={`role-badge role-badge--${role.toLowerCase()}`}
-                            >
-                              {ROLE_LABEL[role]}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td>{user.active ? 'Activo' : 'Inactivo'}</td>
-                      <td>
-                        {canDelete ? (
-                          <button
-                            type="button"
-                            className="btn btn--danger btn--sm"
-                            onClick={() => void handleDelete(user)}
-                          >
-                            Eliminar
-                          </button>
+                        {isEditing ? (
+                          <input
+                            value={editForm.username}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({ ...prev, username: e.target.value }))
+                            }
+                            aria-label="Usuario"
+                          />
                         ) : (
-                          <span className="admin-users__muted">—</span>
+                          user.username
+                        )}
+                      </td>
+                      <td>
+                        {isEditing && !isAdmin ? (
+                          <div className="admin-users__role-checks">
+                            {ASSIGNABLE_ROLES.map((role) => (
+                              <label key={role} className="admin-users__role-check">
+                                <input
+                                  type="checkbox"
+                                  checked={editForm.roles.includes(role)}
+                                  onChange={() => toggleEditRole(role)}
+                                />
+                                {ROLE_LABEL[role]}
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="admin-users__role-list">
+                            {user.roles.map((role) => (
+                              <span
+                                key={role}
+                                className={`role-badge role-badge--${role.toLowerCase()}`}
+                              >
+                                {ROLE_LABEL[role]}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <select
+                            value={editForm.active ? 'activo' : 'no'}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                active: e.target.value === 'activo',
+                              }))
+                            }
+                            aria-label="Estado"
+                            disabled={user.id === currentUserId}
+                          >
+                            <option value="activo">Activo</option>
+                            <option value="no">No disponible</option>
+                          </select>
+                        ) : user.active ? (
+                          'Activo'
+                        ) : (
+                          'No disponible'
+                        )}
+                      </td>
+                      <td className="admin-actions">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn--primary btn--sm"
+                              disabled={submitting}
+                              onClick={() => void handleSaveEdit(user)}
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--outline btn--sm"
+                              disabled={submitting}
+                              onClick={cancelEdit}
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn--outline btn--sm"
+                              onClick={() => startEdit(user)}
+                            >
+                              Editar
+                            </button>
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                className="btn btn--danger btn--sm"
+                                onClick={() => void handleDelete(user)}
+                              >
+                                Eliminar
+                              </button>
+                            ) : null}
+                          </>
                         )}
                       </td>
                     </tr>

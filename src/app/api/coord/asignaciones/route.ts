@@ -12,11 +12,13 @@ type Body = {
     | 'remove_transporte'
     | 'add_pasajero'
     | 'remove_pasajero'
+    | 'set_pasajero_destino'
     | 'set_transporte_celadora'
     | 'clear_transporte_celadora';
   userId?: string;
   transporteId?: string;
   pasajeroId?: string;
+  destinoId?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -114,6 +116,50 @@ export async function POST(request: Request) {
         }
         await prisma.areaPasajero.deleteMany({ where: { areaId, pasajeroId } });
         return NextResponse.json({ message: 'Pasajero removido del área.' });
+      }
+
+      case 'set_pasajero_destino': {
+        const pasajeroId = body.pasajeroId?.trim();
+        if (!pasajeroId) {
+          return NextResponse.json({ message: 'Falta pasajeroId.' }, { status: 400 });
+        }
+
+        const linked = await prisma.areaPasajero.findUnique({
+          where: { areaId_pasajeroId: { areaId, pasajeroId } },
+        });
+        if (!linked) {
+          return NextResponse.json(
+            { message: 'El pasajero debe estar asignado al área primero.' },
+            { status: 400 },
+          );
+        }
+
+        const destinoId =
+          typeof body.destinoId === 'string' && body.destinoId.trim()
+            ? body.destinoId.trim()
+            : null;
+
+        if (destinoId) {
+          const destino = await prisma.destino.findFirst({
+            where: { id: destinoId, areaId, active: true },
+          });
+          if (!destino) {
+            return NextResponse.json(
+              { message: 'El destino no pertenece a esta área.' },
+              { status: 400 },
+            );
+          }
+        }
+
+        await prisma.areaPasajero.update({
+          where: { areaId_pasajeroId: { areaId, pasajeroId } },
+          data: { destinoId },
+        });
+        return NextResponse.json({
+          message: destinoId
+            ? 'Destino asignado al pasajero.'
+            : 'Destino quitado del pasajero.',
+        });
       }
 
       case 'set_transporte_celadora': {

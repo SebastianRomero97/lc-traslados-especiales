@@ -1,23 +1,31 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 import {
+  accionPorTipoParada,
+  buildDetalleDestino,
   buildGrillaTitulo,
   buildGrillaWhatsAppText,
   formatAccionFila,
   formatFechaGrilla,
+  fechaGrillaKey,
+  invertirAccionSubeBaja,
   mapGrillaFilaToForm,
   todayFechaInput,
   type AccionParada,
   type TipoParadaForm,
 } from '@/lib/grilla.utils';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
+
+const GRILLA_BASE_STORAGE_KEY = 'lc-coord-grilla-base';
 
 type AreaOption = { id: string; nombre: string };
 
 type TipoParada = TipoParadaForm;
 
 type FilaForm = {
+  clientId: string;
   tipoParada: TipoParada;
   hora: string;
   direccion: string;
@@ -50,14 +58,20 @@ type GrillaListItem = {
   }[];
 };
 
-const emptyFila = (): FilaForm => ({
+const newClientId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `fila-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+const emptyFila = (tipoItinerario: 'INGRESO' | 'SALIDA' = 'INGRESO'): FilaForm => ({
+  clientId: newClientId(),
   tipoParada: 'pasajero',
   hora: '',
   direccion: '',
   pasajeroNombre: '',
   pasajeroId: '',
   destinoId: '',
-  accion: 'SUBE',
+  accion: accionPorTipoParada('pasajero', tipoItinerario),
   trasbordoHacia: '',
 });
 
@@ -68,7 +82,13 @@ function filasEstanVacias(filas: FilaForm[]): boolean {
   return !f.hora.trim() && !f.direccion.trim() && !f.pasajeroNombre.trim();
 }
 
-export function CoordinadoraGrillasManager() {
+export function CoordinadoraGrillasManager({
+  modo = 'principal',
+}: {
+  modo?: 'principal' | 'historial';
+}) {
+  const popup = usePanelPopup();
+  const esHistorial = modo === 'historial';
   const [areas, setAreas] = useState<AreaOption[]>([]);
   const [areaId, setAreaId] = useState('');
   const [grillas, setGrillas] = useState<GrillaListItem[]>([]);
@@ -81,7 +101,7 @@ export function CoordinadoraGrillasManager() {
       celadoras: { id: string; username: string }[];
     }[];
     celadoras: { id: string; username: string }[];
-    pasajeros: { id: string; nombre: string; direccion: string }[];
+    pasajeros: { id: string; nombre: string; direccion: string; destinoId: string | null }[];
     destinos: { id: string; nombre: string; domicilio: string }[];
     choferes: { id: string; username: string; transporteId: string | null }[];
   } | null>(null);
@@ -95,16 +115,16 @@ export function CoordinadoraGrillasManager() {
     choferId: '',
     celadoraId: '',
   });
-  const [filas, setFilas] = useState<FilaForm[]>([emptyFila()]);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
+  const [filas, setFilas] = useState<FilaForm[]>([emptyFila('INGRESO')]);
   const [submitting, setSubmitting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const formSectionRef = useRef<HTMLElement | null>(null);
   const filasRef = useRef(filas);
   const skipChoferSyncRef = useRef(false);
+  const allowFilaDragRef = useRef(false);
 
   useEffect(() => {
     filasRef.current = filas;
@@ -129,10 +149,11 @@ export function CoordinadoraGrillasManager() {
     const response = await fetch(url);
     const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar las grillas.' });
+      popup.error(body.message ?? 'No se pudieron cargar las grillas.');
       return;
     }
     setGrillas(body.data as GrillaListItem[]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   const loadOptions = useCallback(async (selectedArea: string) => {
@@ -143,10 +164,11 @@ export function CoordinadoraGrillasManager() {
     const response = await fetch(`/api/coord/grillas/options?areaId=${selectedArea}`);
     const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar opciones.' });
+      popup.error(body.message ?? 'No se pudieron cargar opciones.');
       return;
     }
     setOptions(body.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   useEffect(() => {
@@ -156,8 +178,8 @@ export function CoordinadoraGrillasManager() {
   useEffect(() => {
     if (!areaId) return;
     void loadGrillas(areaId);
-    void loadOptions(areaId);
-  }, [areaId, loadGrillas, loadOptions]);
+    if (!esHistorial) void loadOptions(areaId);
+  }, [areaId, esHistorial, loadGrillas, loadOptions]);
 
   const selectedTransporte = useMemo(
     () => options?.transportes.find((t) => t.id === form.transporteId) ?? null,
@@ -182,32 +204,70 @@ export function CoordinadoraGrillasManager() {
     }));
   }, [selectedTransporte, options]);
 
-  const applyGrillaBase = useCallback((grilla: GrillaListItem, sourceLabel?: string) => {
-    skipChoferSyncRef.current = true;
-    setForm({
-      tipoItinerario: grilla.tipoItinerario,
-      fecha: todayFechaInput(),
-      nota: grilla.nota ?? '',
-      conCeladora: grilla.conCeladora,
-      transporteId: grilla.transporte.id,
-      choferId: grilla.chofer.id,
-      celadoraId: grilla.celadora?.id ?? '',
-    });
-    setFilas(
-      grilla.filas.length > 0
-        ? grilla.filas.map((f) => mapGrillaFilaToForm(f))
-        : [emptyFila()],
-    );
-    setFeedback({
-      type: 'success',
-      message:
+  const applyGrillaBase = useCallback(
+    (grilla: GrillaListItem, sourceLabel?: string) => {
+      if (esHistorial) {
+        try {
+          sessionStorage.setItem(GRILLA_BASE_STORAGE_KEY, JSON.stringify(grilla));
+          popup.success(
+            sourceLabel ??
+              `Base lista desde ${formatFechaGrilla(grilla.fecha)}. Abrí la pestaña Grillas para revisarla y guardar.`,
+          );
+        } catch {
+          popup.error('No se pudo guardar la base. Probá de nuevo desde la pestaña Grillas.');
+        }
+        return;
+      }
+
+      skipChoferSyncRef.current = true;
+      setForm({
+        tipoItinerario: grilla.tipoItinerario,
+        fecha: todayFechaInput(),
+        nota: grilla.nota ?? '',
+        conCeladora: grilla.conCeladora,
+        transporteId: grilla.transporte.id,
+        choferId: grilla.chofer.id,
+        celadoraId: grilla.celadora?.id ?? '',
+      });
+      setFilas(
+        grilla.filas.length > 0
+          ? grilla.filas.map((f) => ({ ...mapGrillaFilaToForm(f), clientId: newClientId() }))
+          : [emptyFila(grilla.tipoItinerario)],
+      );
+      popup.success(
         sourceLabel ??
-        `Formulario cargado desde la grilla del ${formatFechaGrilla(grilla.fecha)}. Revisá y guardá.`,
-    });
-    requestAnimationFrame(() => {
-      formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, []);
+          `Formulario cargado desde la grilla del ${formatFechaGrilla(grilla.fecha)}. Revisá y guardá.`,
+      );
+      requestAnimationFrame(() => {
+        formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
+    [esHistorial],
+  );
+
+  useEffect(() => {
+    if (esHistorial) return;
+    try {
+      const raw = sessionStorage.getItem(GRILLA_BASE_STORAGE_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(GRILLA_BASE_STORAGE_KEY);
+      const grilla = JSON.parse(raw) as GrillaListItem;
+      applyGrillaBase(
+        grilla,
+        `Formulario cargado desde el historial (${formatFechaGrilla(grilla.fecha)}). Revisá y guardá.`,
+      );
+      if (grilla.area?.id) setAreaId(grilla.area.id);
+    } catch {
+      sessionStorage.removeItem(GRILLA_BASE_STORAGE_KEY);
+    }
+  }, [esHistorial, applyGrillaBase]);
+
+  const grillasVisibles = useMemo(() => {
+    if (esHistorial) return grillas;
+    const hoy = todayFechaInput();
+    return grillas.filter((g) => fechaGrillaKey(g.fecha) === hoy);
+  }, [esHistorial, grillas]);
 
   const findUltimaLocal = useCallback(
     (
@@ -257,9 +317,10 @@ export function CoordinadoraGrillasManager() {
       if (!ultima) return;
 
       if (!filasEstanVacias(filasRef.current)) {
-        const ok = window.confirm(
-          `Hay una grilla anterior de este transporte (${formatFechaGrilla(ultima.fecha)}). ¿Cargar la última grilla de este transporte?`,
-        );
+        const ok = await popup.confirm({
+          message: `Hay una grilla anterior de este transporte (${formatFechaGrilla(ultima.fecha)}). ¿Cargar la última grilla de este transporte?`,
+          confirmLabel: 'Cargar',
+        });
         if (!ok) return;
       }
 
@@ -268,6 +329,7 @@ export function CoordinadoraGrillasManager() {
         `Precargado desde la última grilla de este transporte (${formatFechaGrilla(ultima.fecha)}). Revisá y guardá.`,
       );
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
     [applyGrillaBase, fetchUltima],
   );
 
@@ -278,9 +340,38 @@ export function CoordinadoraGrillasManager() {
     }
   };
 
+  const nombresPasajerosDeDestino = (destinoId: string): string[] => {
+    if (!options?.pasajeros) return [];
+    return options.pasajeros.filter((p) => p.destinoId === destinoId).map((p) => p.nombre);
+  };
+
   const handleTipoChange = (tipoItinerario: 'INGRESO' | 'SALIDA') => {
+    const prevTipo = form.tipoItinerario;
     setForm((p) => ({ ...p, tipoItinerario }));
-    if (form.transporteId && areaId) {
+
+    if (prevTipo !== tipoItinerario) {
+      setFilas((prev) =>
+        prev.map((fila) => {
+          if (fila.tipoParada === 'trasbordo') return fila;
+          const accion = invertirAccionSubeBaja(fila.accion);
+          if (fila.tipoParada !== 'destino' || !fila.destinoId) {
+            return { ...fila, accion };
+          }
+          const destino = options?.destinos.find((d) => d.id === fila.destinoId);
+          return {
+            ...fila,
+            accion,
+            pasajeroNombre: buildDetalleDestino({
+              destinoNombre: destino?.nombre ?? fila.pasajeroNombre,
+              accion,
+              pasajeroNombres: nombresPasajerosDeDestino(fila.destinoId),
+            }),
+          };
+        }),
+      );
+    }
+
+    if (filasEstanVacias(filasRef.current) && form.transporteId && areaId) {
       void tryPrecargaDesdeTransporte(form.transporteId, tipoItinerario, areaId);
     }
   };
@@ -289,10 +380,57 @@ export function CoordinadoraGrillasManager() {
     setFilas((prev) => prev.map((fila, i) => (i === index ? { ...fila, ...patch } : fila)));
   };
 
-  const addFila = () => setFilas((prev) => [...prev, emptyFila()]);
+  const addFila = () => setFilas((prev) => [...prev, emptyFila(form.tipoItinerario)]);
 
   const removeFila = (index: number) => {
     setFilas((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const moveFilaTo = (from: number, to: number) => {
+    setFilas((prev) => {
+      if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  };
+
+  const handleFilaDragStart = (event: DragEvent<HTMLDivElement>, filaId: string) => {
+    if (!allowFilaDragRef.current) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', filaId);
+    setDraggingId(filaId);
+    setDropTargetId(null);
+  };
+
+  const handleFilaDragEnd = () => {
+    allowFilaDragRef.current = false;
+    setDraggingId(null);
+    setDropTargetId(null);
+  };
+
+  const handleFilaDragOver = (event: DragEvent<HTMLDivElement>, filaId: string) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (draggingId && draggingId !== filaId) {
+      setDropTargetId(filaId);
+    }
+  };
+
+  const handleFilaDrop = (event: DragEvent<HTMLDivElement>, toIndex: number) => {
+    event.preventDefault();
+    const fromId = event.dataTransfer.getData('text/plain');
+    const fromIndex = filas.findIndex((f) => f.clientId === fromId);
+    if (fromIndex >= 0) moveFilaTo(fromIndex, toIndex);
+    allowFilaDragRef.current = false;
+    setDraggingId(null);
+    setDropTargetId(null);
   };
 
   const fillFromPasajero = (index: number, pasajeroId: string) => {
@@ -306,6 +444,7 @@ export function CoordinadoraGrillasManager() {
       destinoId: '',
       pasajeroNombre: pasajero.nombre,
       direccion: pasajero.direccion,
+      accion: accionPorTipoParada('pasajero', form.tipoItinerario),
     });
   };
 
@@ -315,12 +454,17 @@ export function CoordinadoraGrillasManager() {
       updateFila(index, { destinoId: '', pasajeroNombre: '', direccion: '' });
       return;
     }
+    const accion = accionPorTipoParada('destino', form.tipoItinerario);
     updateFila(index, {
       destinoId,
       pasajeroId: '',
-      pasajeroNombre: `pasajeros → ${destino.nombre}`,
+      pasajeroNombre: buildDetalleDestino({
+        destinoNombre: destino.nombre,
+        accion,
+        pasajeroNombres: nombresPasajerosDeDestino(destinoId),
+      }),
       direccion: destino.domicilio,
-      accion: 'BAJA',
+      accion,
     });
   };
 
@@ -328,7 +472,7 @@ export function CoordinadoraGrillasManager() {
     if (tipoParada === 'destino') {
       updateFila(index, {
         tipoParada,
-        accion: 'BAJA',
+        accion: accionPorTipoParada('destino', form.tipoItinerario),
         pasajeroId: '',
         trasbordoHacia: '',
       });
@@ -344,10 +488,103 @@ export function CoordinadoraGrillasManager() {
     }
     updateFila(index, {
       tipoParada,
-      accion: 'SUBE',
+      accion: accionPorTipoParada('pasajero', form.tipoItinerario),
       destinoId: '',
       trasbordoHacia: '',
     });
+  };
+
+  const cargarSalidaDesdeIngreso = async () => {
+    if (!areaId || !form.fecha) {
+      popup.error('Seleccioná área y fecha primero.');
+      return;
+    }
+
+    if (!filasEstanVacias(filas)) {
+      const ok = await popup.confirm({
+        message:
+          'Esto va a reemplazar las filas actuales con los pasajeros que asistieron en el Ingreso de esa fecha. ¿Continuar?',
+        confirmLabel: 'Cargar asistentes',
+      });
+      if (!ok) return;
+    }
+
+    setSubmitting(true);
+    try {
+      const params = new URLSearchParams({
+        areaId,
+        fecha: form.fecha,
+      });
+      if (form.transporteId) params.set('transporteId', form.transporteId);
+
+      const response = await fetch(`/api/coord/grillas/desde-ingreso?${params}`);
+      if (!response.ok) {
+        popup.error(await readApiError(response, 'No se pudo armar la Salida desde el Ingreso.'));
+        return;
+      }
+
+      const body = (await response.json()) as {
+        message?: string;
+        data: {
+          sugerido: {
+            tipoItinerario: 'SALIDA';
+            fecha: string;
+            nota: string | null;
+            conCeladora: boolean;
+            transporteId: string;
+            choferId: string;
+            celadoraId: string | null;
+            filas: {
+              tipoParada: TipoParadaForm;
+              hora: string;
+              direccion: string;
+              pasajeroNombre: string;
+              pasajeroId: string | null;
+              destinoId: string | null;
+              accion: AccionParada;
+              trasbordoHacia: string | null;
+            }[];
+          };
+        };
+      };
+
+      const s = body.data.sugerido;
+      setForm({
+        tipoItinerario: 'SALIDA',
+        fecha: s.fecha,
+        nota: s.nota ?? '',
+        conCeladora: s.conCeladora,
+        transporteId: s.transporteId,
+        choferId: s.choferId,
+        celadoraId: s.celadoraId ?? '',
+      });
+      setFilas(
+        s.filas.length > 0
+          ? s.filas.map((f) => ({
+              clientId: newClientId(),
+              tipoParada: f.tipoParada,
+              hora: f.hora,
+              direccion: f.direccion,
+              pasajeroNombre: f.pasajeroNombre,
+              pasajeroId: f.pasajeroId ?? '',
+              destinoId: f.destinoId ?? '',
+              accion: f.accion,
+              trasbordoHacia: f.trasbordoHacia ?? '',
+            }))
+          : [emptyFila('SALIDA')],
+      );
+      popup.success(
+        body.message ??
+          'Salida armada desde los asistentes del Ingreso. Podés cambiar transporte, celadora y filas.',
+      );
+      requestAnimationFrame(() => {
+        formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } catch {
+      popup.error('Error de conexión al armar la Salida.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const validateBeforeCreate = (): string | null => {
@@ -402,11 +639,10 @@ export function CoordinadoraGrillasManager() {
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    setFeedback(null);
 
     const validationError = validateBeforeCreate();
     if (validationError) {
-      setFeedback({ type: 'error', message: validationError });
+      popup.error(validationError);
       return;
     }
 
@@ -431,40 +667,35 @@ export function CoordinadoraGrillasManager() {
         }),
       });
       if (!response.ok) {
-        setFeedback({
-          type: 'error',
-          message: await readApiError(response, 'No se pudo crear la grilla.'),
-        });
+        popup.error(await readApiError(response, 'No se pudo crear la grilla.'));
         return;
       }
       const body = (await response.json()) as { message?: string; data: { id: string } };
-      setFeedback({ type: 'success', message: body.message ?? 'Grilla creada.' });
-      setFilas([emptyFila()]);
+      popup.success(body.message ?? 'Grilla creada.');
+      setFilas([emptyFila(form.tipoItinerario)]);
       setForm((prev) => ({ ...prev, nota: '' }));
       await loadGrillas(areaId);
       setSelectedId(body.data.id);
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
-      });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('¿Eliminar esta grilla?')) return;
+    const ok = await popup.confirm({
+      message: '¿Eliminar esta grilla?',
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     const response = await fetch(`/api/coord/grillas/${id}`, { method: 'DELETE' });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo eliminar la grilla.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo eliminar la grilla.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
-    setFeedback({ type: 'success', message: body.message ?? 'Grilla eliminada.' });
+    popup.success(body.message ?? 'Grilla eliminada.');
     if (selectedId === id) setSelectedId(null);
     await loadGrillas(areaId);
   };
@@ -539,16 +770,40 @@ export function CoordinadoraGrillasManager() {
 
   return (
     <div className="coord-grillas">
-      {feedback && (
-        <p className={`form-feedback form-feedback--${feedback.type}`}>{feedback.message}</p>
-      )}
+      {popup.popupNode}
 
+      {esHistorial ? (
+        <section className="panel-card">
+          <h2>Historial de grillas</h2>
+          <p className="panel-card__desc">
+            Todas las grillas del área seleccionada. Podés ver, compartir, imprimir o usar una como
+            base (después abrí la pestaña Grillas para revisarla y guardar).
+          </p>
+          <div className="form-group" style={{ maxWidth: '20rem' }}>
+            <label htmlFor="h-area">Área</label>
+            <select
+              id="h-area"
+              value={areaId}
+              onChange={(e) => {
+                setSelectedId(null);
+                setAreaId(e.target.value);
+              }}
+            >
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+      ) : (
       <section className="panel-card" ref={formSectionRef}>
         <h2>Crear grilla</h2>
         <p className="panel-card__desc">
-          Armá el itinerario (ingreso/salida). Podés partir de una grilla anterior con “Usar como
-          base” o eligiendo un transporte que ya tuvo recorrido. Después compartilo por WhatsApp o
-          imprimilo.
+          Armá el itinerario (ingreso/salida). Al cambiar Ingresos ↔ Salidas se invierten sube/baja.
+          En Salidas podés cargar automáticamente a quienes asistieron en el Ingreso del día.
+          Transporte y celadora quedan editables.
         </p>
 
         <form className="grilla-form" onSubmit={handleCreate}>
@@ -586,6 +841,20 @@ export function CoordinadoraGrillasManager() {
                 required
               />
             </div>
+
+            {form.tipoItinerario === 'SALIDA' && (
+              <div className="form-group grilla-form__desde-ingreso">
+                <label>&nbsp;</label>
+                <button
+                  type="button"
+                  className="btn btn--outline"
+                  disabled={submitting || !areaId || !form.fecha}
+                  onClick={() => void cargarSalidaDesdeIngreso()}
+                >
+                  Cargar desde Ingresos (asistentes)
+                </button>
+              </div>
+            )}
 
             <div className="form-group">
               <label htmlFor="g-tr">Transporte</label>
@@ -673,14 +942,51 @@ export function CoordinadoraGrillasManager() {
 
           <div className="grilla-filas">
             <div className="grilla-filas__head">
-              <h3>Paradas</h3>
+              <div>
+                <h3>Paradas</h3>
+                <p className="grilla-filas__hint">
+                  Arrastrá el ícono ∷ para cambiar el orden de las filas.
+                </p>
+              </div>
               <button type="button" className="btn btn--outline btn--sm" onClick={addFila}>
                 + Fila
               </button>
             </div>
 
             {filas.map((fila, index) => (
-              <div key={index} className="grilla-fila grilla-fila--rich">
+              <div
+                key={fila.clientId}
+                className={[
+                  'grilla-fila',
+                  'grilla-fila--rich',
+                  draggingId === fila.clientId ? 'is-dragging' : '',
+                  dropTargetId === fila.clientId ? 'is-drop-target' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                draggable={filas.length > 1}
+                onDragStart={(e) => handleFilaDragStart(e, fila.clientId)}
+                onDragEnd={handleFilaDragEnd}
+                onDragOver={(e) => handleFilaDragOver(e, fila.clientId)}
+                onDragLeave={() => {
+                  if (dropTargetId === fila.clientId) setDropTargetId(null);
+                }}
+                onDrop={(e) => handleFilaDrop(e, index)}
+              >
+                <span
+                  className="grilla-fila__handle"
+                  role="button"
+                  tabIndex={filas.length > 1 ? 0 : -1}
+                  title="Arrastra para cambiar el orden"
+                  aria-label={`Arrastrar fila ${index + 1} para cambiar el orden`}
+                  aria-disabled={filas.length === 1}
+                  onPointerDown={() => {
+                    allowFilaDragRef.current = filas.length > 1;
+                  }}
+                >
+                  <span className="grilla-fila__handle-icon" aria-hidden="true" />
+                </span>
+
                 <div className="form-group">
                   <label>Hora</label>
                   <input
@@ -806,14 +1112,17 @@ export function CoordinadoraGrillasManager() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  className="btn btn--danger btn--sm"
-                  onClick={() => removeFila(index)}
-                  disabled={filas.length === 1}
-                >
-                  Quitar
-                </button>
+                <div className="form-group grilla-fila__acciones-wrap">
+                  <label className="grilla-fila__acciones-label">&nbsp;</label>
+                  <button
+                    type="button"
+                    className="btn btn--danger btn--sm"
+                    onClick={() => removeFila(index)}
+                    disabled={filas.length === 1}
+                  >
+                    Quitar
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -823,11 +1132,21 @@ export function CoordinadoraGrillasManager() {
           </button>
         </form>
       </section>
+      )}
 
       <section className="panel-card">
-        <h2>Grillas del área</h2>
-        {grillas.length === 0 ? (
-          <p className="panel-card__desc">Todavía no hay grillas en esta área.</p>
+        <h2>{esHistorial ? 'Historial del área' : 'Grillas de hoy'}</h2>
+        <p className="panel-card__desc">
+          {esHistorial
+            ? 'Listado completo de grillas de esta área.'
+            : 'Solo las grillas del día de hoy. El resto está en Historial.'}
+        </p>
+        {grillasVisibles.length === 0 ? (
+          <p className="panel-card__desc">
+            {esHistorial
+              ? 'Todavía no hay grillas en esta área.'
+              : 'No hay grillas creadas para hoy en esta área.'}
+          </p>
         ) : (
           <div className="admin-users__table-wrap">
             <table className="admin-users__table">
@@ -841,7 +1160,7 @@ export function CoordinadoraGrillasManager() {
                 </tr>
               </thead>
               <tbody>
-                {grillas.map((g) => (
+                {grillasVisibles.map((g) => (
                   <tr key={g.id} className={selectedId === g.id ? 'is-selected' : ''}>
                     <td>{formatFechaGrilla(g.fecha)}</td>
                     <td>{g.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'}</td>

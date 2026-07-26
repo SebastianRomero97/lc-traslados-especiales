@@ -1,8 +1,12 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@/generated/prisma/client';
 
+/** Subir este número cuando un cambio de schema rompa el hot-reload (cliente viejo en global). */
+const PRISMA_CLIENT_REV = 3;
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaRev?: number;
 };
 
 function createPrismaClient() {
@@ -20,9 +24,18 @@ function createPrismaClient() {
 
 function isUsableClient(client: PrismaClient | undefined): client is PrismaClient {
   if (!client) return false;
-  // Evita cliente viejo en hot-reload cuando se agregan modelos (ej. Grilla)
-  const grilla = (client as unknown as { grilla?: { findMany?: unknown } }).grilla;
-  return typeof grilla?.findMany === 'function';
+  if (globalForPrisma.prismaRev !== PRISMA_CLIENT_REV) return false;
+
+  const asAny = client as unknown as {
+    grilla?: { findMany?: unknown };
+    asistencia?: { findMany?: unknown };
+    publicacion?: { findMany?: unknown };
+  };
+  return (
+    typeof asAny.grilla?.findMany === 'function' &&
+    typeof asAny.asistencia?.findMany === 'function' &&
+    typeof asAny.publicacion?.findMany === 'function'
+  );
 }
 
 function getPrismaClient() {
@@ -32,6 +45,7 @@ function getPrismaClient() {
 
   const client = createPrismaClient();
   globalForPrisma.prisma = client;
+  globalForPrisma.prismaRev = PRISMA_CLIENT_REV;
   return client;
 }
 

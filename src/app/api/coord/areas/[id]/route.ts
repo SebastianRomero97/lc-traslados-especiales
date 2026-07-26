@@ -26,10 +26,10 @@ export async function GET(_request: Request, { params }: Params) {
             include: {
               celadoras: {
                 include: {
-                  user: { select: { id: true, username: true } },
+                  user: { select: { id: true, username: true, active: true } },
                 },
               },
-              choferes: { select: { id: true, username: true } },
+              choferes: { select: { id: true, username: true, active: true } },
             },
           },
         },
@@ -37,6 +37,7 @@ export async function GET(_request: Request, { params }: Params) {
       pasajeros: {
         include: {
           pasajero: true,
+          destino: { select: { id: true, nombre: true, domicilio: true, active: true } },
         },
       },
     },

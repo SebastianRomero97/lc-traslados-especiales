@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type Transporte = {
   id: string;
@@ -13,12 +14,10 @@ type Transporte = {
 };
 
 export function AdminTransportesManager() {
+  const popup = usePanelPopup();
   const [items, setItems] = useState<Transporte[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
   const [form, setForm] = useState({ nombre: '', tipo: '', capacidad: '' });
 
   const load = useCallback(async () => {
@@ -27,15 +26,16 @@ export function AdminTransportesManager() {
       const response = await fetch('/api/admin/transportes');
       const body = await response.json();
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar.' });
+        popup.error(body.message ?? 'No se pudieron cargar los transportes.');
         return;
       }
       setItems(body.data as Transporte[]);
     } catch {
-      setFeedback({ type: 'error', message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.' });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   useEffect(() => {
@@ -44,14 +44,13 @@ export function AdminTransportesManager() {
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    setFeedback(null);
 
     const missing = missingFieldsMessage(
       { nombre: form.nombre, tipo: form.tipo },
       { nombre: 'nombre del transporte', tipo: 'tipo' },
     );
     if (missing) {
-      setFeedback({ type: 'error', message: missing });
+      popup.error(missing);
       return;
     }
 
@@ -67,61 +66,54 @@ export function AdminTransportesManager() {
         }),
       });
       if (!response.ok) {
-        setFeedback({
-          type: 'error',
-          message: await readApiError(response, 'No se pudo crear el transporte.'),
-        });
+        popup.error(await readApiError(response, 'No se pudo crear el transporte.'));
         return;
       }
       const body = (await response.json()) as { message?: string };
       setForm({ nombre: '', tipo: '', capacidad: '' });
-      setFeedback({ type: 'success', message: body.message ?? 'Creado.' });
+      popup.success(body.message ?? 'Transporte creado.');
       await load();
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
-      });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const toggleActive = async (item: Transporte) => {
-    setFeedback(null);
     const response = await fetch(`/api/admin/transportes/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !item.active }),
     });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo actualizar el transporte.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo actualizar el transporte.'));
       return;
     }
+    popup.success(item.active ? 'Transporte desactivado.' : 'Transporte activado.');
     await load();
   };
 
   const handleDelete = async (item: Transporte) => {
-    if (!window.confirm(`¿Eliminar el transporte "${item.nombre}"?`)) return;
-    setFeedback(null);
+    const ok = await popup.confirm({
+      message: `¿Eliminar el transporte "${item.nombre}"? Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
+
     const response = await fetch(`/api/admin/transportes/${item.id}`, { method: 'DELETE' });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo eliminar el transporte.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo eliminar el transporte.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
-    setFeedback({ type: 'success', message: body.message ?? 'Eliminado.' });
+    popup.success(body.message ?? 'Transporte eliminado.');
     await load();
   };
 
   return (
     <div className="admin-section">
+      {popup.popupNode}
       <section className="panel-card">
         <h2>Crear transporte</h2>
         <p className="panel-card__desc">Nombre, tipo y capacidad opcional.</p>
@@ -161,9 +153,6 @@ export function AdminTransportesManager() {
             {submitting ? 'Creando...' : 'Crear'}
           </button>
         </form>
-        {feedback && (
-          <p className={`form-feedback form-feedback--${feedback.type}`}>{feedback.message}</p>
-        )}
       </section>
 
       <section className="panel-card">
@@ -190,7 +179,7 @@ export function AdminTransportesManager() {
                     <td>{item.nombre}</td>
                     <td>{item.tipo}</td>
                     <td>{item.capacidad ?? '—'}</td>
-                    <td>{item.active ? 'Activo' : 'Inactivo'}</td>
+                    <td>{item.active ? 'Activo' : 'No disponible'}</td>
                     <td className="admin-actions">
                       <button
                         type="button"

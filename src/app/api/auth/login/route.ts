@@ -19,9 +19,10 @@ export async function POST(request: Request) {
 
     const user = await prisma.user.findUnique({ where: { username } });
 
+    // Usuario inexistente (eliminado) o desactivado por Admin
     if (!user || !user.active) {
       return NextResponse.json(
-        { message: 'Usuario o contraseña incorrectos.' },
+        { message: 'Credencial no autorizada' },
         { status: 401 },
       );
     }
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     const valid = await compare(password, user.passwordHash);
     if (!valid) {
       return NextResponse.json(
-        { message: 'Usuario o contraseña incorrectos.' },
+        { message: 'Credencial no autorizada' },
         { status: 401 },
       );
     }

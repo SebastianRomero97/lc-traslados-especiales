@@ -5,14 +5,30 @@ import { AdminUsersManager } from '@/components/panel/AdminUsersManager';
 import { AdminTransportesManager } from '@/components/panel/AdminTransportesManager';
 import { AdminPasajerosManager } from '@/components/panel/AdminPasajerosManager';
 import { AdminChoferesManager } from '@/components/panel/AdminChoferesManager';
+import { NovedadesVehiculoPanel } from '@/components/panel/NovedadesVehiculoPanel';
+import { InformeMetricasPanel } from '@/components/panel/InformeMetricasPanel';
+import { AdminPublicacionesManager } from '@/components/panel/AdminPublicacionesManager';
+import { RespaldoHistorialPanel } from '@/components/panel/RespaldoHistorialPanel';
 
-type Tab = 'usuarios' | 'transportes' | 'pasajeros' | 'choferes';
+type Tab =
+  | 'usuarios'
+  | 'transportes'
+  | 'pasajeros'
+  | 'choferes'
+  | 'informe'
+  | 'respaldo'
+  | 'publicaciones'
+  | 'novedades';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'transportes', label: 'Transportes' },
   { id: 'pasajeros', label: 'Pasajeros' },
   { id: 'choferes', label: 'Choferes' },
+  { id: 'informe', label: 'Informe' },
+  { id: 'respaldo', label: 'Respaldo' },
+  { id: 'publicaciones', label: 'Publicaciones' },
+  { id: 'novedades', label: 'Novedades' },
 ];
 
 export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
@@ -40,6 +56,10 @@ export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
         {tab === 'transportes' && <AdminTransportesManager />}
         {tab === 'pasajeros' && <AdminPasajerosManager />}
         {tab === 'choferes' && <AdminChoferesManager />}
+        {tab === 'informe' && <InformeMetricasPanel />}
+        {tab === 'respaldo' && <RespaldoHistorialPanel />}
+        {tab === 'publicaciones' && <AdminPublicacionesManager />}
+        {tab === 'novedades' && <NovedadesVehiculoPanel />}
       </div>
     </div>
   );

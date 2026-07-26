@@ -86,7 +86,10 @@ export async function GET(request: Request) {
         .map((c) => c.user),
       pasajeros: area.pasajeros
         .filter((p) => p.pasajero.active)
-        .map((p) => p.pasajero),
+        .map((p) => ({
+          ...p.pasajero,
+          destinoId: p.destinoId,
+        })),
       destinos: area.destinos,
       choferes,
     },

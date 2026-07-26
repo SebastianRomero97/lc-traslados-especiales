@@ -2,6 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
+import { PasajeroHistorialView } from '@/components/panel/PasajeroHistorialView';
 
 type Pasajero = {
   id: string;
@@ -18,16 +20,15 @@ function extractZona(direccion: string): string {
 }
 
 export function AdminPasajerosManager() {
+  const popup = usePanelPopup();
   const [items, setItems] = useState<Pasajero[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
   const [form, setForm] = useState({ nombre: '', direccion: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ nombre: '', direccion: '' });
   const [filters, setFilters] = useState({ nombre: '', direccion: '', zona: '' });
+  const [historialId, setHistorialId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,18 +36,16 @@ export function AdminPasajerosManager() {
       const response = await fetch('/api/admin/pasajeros');
       const body = await response.json();
       if (!response.ok) {
-        setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar.' });
+        popup.error(body.message ?? 'No se pudieron cargar.');
         return;
       }
       setItems(body.data as Pasajero[]);
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
-      });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   useEffect(() => {
@@ -81,7 +80,6 @@ export function AdminPasajerosManager() {
   const startEdit = (item: Pasajero) => {
     setEditingId(item.id);
     setEditForm({ nombre: item.nombre, direccion: item.direccion });
-    setFeedback(null);
   };
 
   const cancelEdit = () => {
@@ -91,14 +89,13 @@ export function AdminPasajerosManager() {
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    setFeedback(null);
 
     const missing = missingFieldsMessage(
       { nombre: form.nombre, direccion: form.direccion },
       { nombre: 'nombre del pasajero', direccion: 'dirección' },
     );
     if (missing) {
-      setFeedback({ type: 'error', message: missing });
+      popup.error(missing);
       return;
     }
 
@@ -110,34 +107,27 @@ export function AdminPasajerosManager() {
         body: JSON.stringify(form),
       });
       if (!response.ok) {
-        setFeedback({
-          type: 'error',
-          message: await readApiError(response, 'No se pudo crear el pasajero.'),
-        });
+        popup.error(await readApiError(response, 'No se pudo crear el pasajero.'));
         return;
       }
       const body = (await response.json()) as { message?: string };
       setForm({ nombre: '', direccion: '' });
-      setFeedback({ type: 'success', message: body.message ?? 'Creado.' });
+      popup.success(body.message ?? 'Creado.');
       await load();
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
-      });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleSaveEdit = async (id: string) => {
-    setFeedback(null);
     const missing = missingFieldsMessage(
       { nombre: editForm.nombre, direccion: editForm.direccion },
       { nombre: 'nombre del pasajero', direccion: 'dirección' },
     );
     if (missing) {
-      setFeedback({ type: 'error', message: missing });
+      popup.error(missing);
       return;
     }
 
@@ -152,56 +142,46 @@ export function AdminPasajerosManager() {
         }),
       });
       if (!response.ok) {
-        setFeedback({
-          type: 'error',
-          message: await readApiError(response, 'No se pudo actualizar el pasajero.'),
-        });
+        popup.error(await readApiError(response, 'No se pudo actualizar el pasajero.'));
         return;
       }
       const body = (await response.json()) as { message?: string };
-      setFeedback({ type: 'success', message: body.message ?? 'Pasajero actualizado.' });
+      popup.success(body.message ?? 'Pasajero actualizado.');
       cancelEdit();
       await load();
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Error de conexión. Revisá tu internet o que el servidor esté en marcha.',
-      });
+      popup.error('Error de conexión. Revisá tu internet o que el servidor esté en marcha.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const toggleActive = async (item: Pasajero) => {
-    setFeedback(null);
     const response = await fetch(`/api/admin/pasajeros/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !item.active }),
     });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo actualizar el pasajero.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo actualizar el pasajero.'));
       return;
     }
     await load();
   };
 
   const handleDelete = async (item: Pasajero) => {
-    if (!window.confirm(`¿Eliminar al pasajero "${item.nombre}"?`)) return;
-    setFeedback(null);
+    const ok = await popup.confirm({
+      message: `¿Eliminar al pasajero "${item.nombre}"?`,
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     const response = await fetch(`/api/admin/pasajeros/${item.id}`, { method: 'DELETE' });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo eliminar el pasajero.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo eliminar el pasajero.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
-    setFeedback({ type: 'success', message: body.message ?? 'Eliminado.' });
+    popup.success(body.message ?? 'Eliminado.');
     if (editingId === item.id) cancelEdit();
     await load();
   };
@@ -209,8 +189,18 @@ export function AdminPasajerosManager() {
   const clearFilters = () => setFilters({ nombre: '', direccion: '', zona: '' });
   const hasFilters = Boolean(filters.nombre || filters.direccion || filters.zona);
 
+  if (historialId) {
+    return (
+      <PasajeroHistorialView
+        pasajeroId={historialId}
+        onBack={() => setHistorialId(null)}
+      />
+    );
+  }
+
   return (
     <div className="admin-section">
+      {popup.popupNode}
       <section className="panel-card">
         <h2>Crear pasajero</h2>
         <p className="panel-card__desc">
@@ -241,9 +231,6 @@ export function AdminPasajerosManager() {
             {submitting ? 'Creando...' : 'Crear'}
           </button>
         </form>
-        {feedback && (
-          <p className={`form-feedback form-feedback--${feedback.type}`}>{feedback.message}</p>
-        )}
       </section>
 
       <section className="panel-card">
@@ -384,6 +371,13 @@ export function AdminPasajerosManager() {
                                 onClick={() => startEdit(item)}
                               >
                                 Editar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--primary btn--sm"
+                                onClick={() => setHistorialId(item.id)}
+                              >
+                                Historial
                               </button>
                               <button
                                 type="button"

@@ -1,7 +1,7 @@
 # Plan — Sistema interno LC Traslados Especiales
 
-Documento de requisitos acordados. **Estado:** Fases 1–5 + multi-rol · siguiente Fase 6.  
-Última actualización: 25 jul 2026 (roles múltiples + Gladis Admin).
+Documento de requisitos acordados. **Estado:** Fases 1–8 + multi-rol.  
+Última actualización: 26 jul 2026 (paneles Celadora / Chofer).
 
 ---
 
@@ -89,11 +89,8 @@ El Admin visualiza el **total de todo**, por ejemplo:
 
 ### Publicaciones
 - Crear publicaciones con **duración** definida por el admin.
-- Pueden aparecer en vistas de celadoras y coordinadoras.
-- El admin puede dirigirlas a:
-  - Ambas
-  - Solo celadoras
-  - Solo coordinadoras
+- Destinatarios **manuales** (checkboxes): coordinadoras, celadoras y/o choferes.
+- Aparecen en el panel de los roles seleccionados mientras estén vigentes.
 
 ---
 
@@ -182,16 +179,27 @@ Notas del ejemplo:
 - Enviar grilla por WhatsApp (imagen/PDF + compartir).
 
 ### Fase 6 — Paneles operativos
-- **Celadora:** iniciar/fin (subida pasajeros), asistencia, informe.
-- **Chofer:** inicio/fin (manejo), Maps/Waze, asistencia si sin celadora, informe.
+- **Celadora:** iniciar/fin (subida pasajeros), asistencia, informe; pestañas Principal (grillas nuevas) / Historial (completadas).
+- **Chofer:** inicio/fin (manejo), Maps/Waze, asistencia si sin celadora, informe; Principal / Historial / **Vehículo asignado** (detalle + novedades visibles para Admin y Coordinadora).
 
 ### Fase 7 — Admin: métricas y publicaciones
-- Gráficas totales (asistencias, por área/destino, tiempos, promedios, frecuencia).
-- Publicaciones con duración y destinatarios.
+- **Informe:** por celadora y por chofer (historial de informes, duración por ruta, destinos/asistencia o combustible en barras). Filtro por fechas. Admin + Coordinadora.
+- Apartado futuro de **Pasajeros** (métricas propias) pendiente.
+- **Publicaciones:** avisos con vigencia; el Admin elige destinatarios (coordinadoras, celadoras y/o choferes).
+
+### Fase 8 — Respaldo de historiales
+- Pestaña **Respaldo** (Admin + Coordinadora): filtros por fechas / área / transporte / pasajero.
+- Descargar CSV (Excel) de grillas y de asistencias.
+- Imprimir / Guardar PDF (ventana de impresión del navegador) con itinerario, asistencias, tiempos e informes.
 
 ---
 
 ## Coordinadora — capacidades
+
+### Grillas / itinerario
+- Al elegir **Ingresos** o **Salidas**, las acciones **sube/baja** se invierten (pasajero ↔ destino).
+- En el área, cada pasajero puede tener un **destino habitual**; la fila de destino lista quiénes bajan/suben.
+- **Salidas desde Ingresos:** botón para armar la grilla con quienes **asistieron** ese día; transporte y celadora quedan editables; se pueden agregar filas extra.
 
 ### Áreas
 - Gestionar “Áreas” separadas por **nombre** (definido por la coordinadora).
@@ -293,6 +301,11 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 ### Informe post-recorrido
 - Al finalizar, también completa el **informe de observaciones** (igual que la celadora).
 - Visible **solo para Admin y Coordinadora**.
+- Al cerrar el informe, la grilla pasa de **Principal** a **Historial** (solo lectura).
+
+### Vehículo asignado
+- Detalle del transporte asignado por Admin.
+- El chofer puede **notificar novedades** del vehículo; Admin y Coordinadora las ven en la pestaña **Novedades**.
 
 ---
 
@@ -358,9 +371,9 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 - [x] **Fase 4 implementada:** Áreas, destinos y asignaciones (Coordinadora)
 - [x] **Fase 5 implementada:** Grillas (crear, listar, WhatsApp texto, imprimir)
 - [x] **Multi-rol:** un usuario puede tener varios roles (excepto Admin); Gladis Admin en seed
-- [ ] Fase 6: Paneles Celadora / Chofer
-- [ ] Fase 7: Gráficas + publicaciones
-- [ ] Fase 8 (respaldo): descargar / imprimir historiales (PDF/Excel + papel)
+- [x] **Fase 6 implementada:** Paneles Celadora / Chofer (reloj, asistencia, Maps/Waze, informe)
+- [x] **Fase 7 implementada:** Informe/métricas (Admin + Coordinadora) + publicaciones con vigencia
+- [x] **Fase 8 implementada:** Respaldo historiales (CSV Excel + imprimir/PDF)
 
 ---
 
@@ -368,8 +381,8 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 
 - Desarrollar **parte por parte** según el plan de fases.
 - Stack y alcance principal: **confirmados**.
-- **Fases 1–5 + multi-rol:** listas. Siguiente: **Fase 6 (Celadora / Chofer)**.
-- Commit Fases 1–3 ya pusheado a GitHub (`4d9a20d`). Fase 4–5 y multi-rol pendientes de commit.
+- **Fases 1–8 + multi-rol:** listas.
+- Commit Fases 1–3 ya pusheado a GitHub (`4d9a20d`). Avances posteriores pendientes de commit/push.
 
 ### Claim DB (desarrollo)
 DB reclamada por el usuario.

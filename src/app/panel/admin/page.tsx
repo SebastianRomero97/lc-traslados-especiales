@@ -10,7 +10,8 @@ export default async function AdminPanelPage() {
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>
-          Gestioná usuarios, transportes, pasajeros y la asignación de vehículos a choferes.
+          Gestioná usuarios, catálogos, informe de métricas, publicaciones y novedades de
+          vehículos.
         </p>
       </section>
 

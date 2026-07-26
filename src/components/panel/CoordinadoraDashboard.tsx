@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type AreaSummary = {
   id: string;
@@ -22,7 +23,7 @@ type Destino = {
   active: boolean;
 };
 
-type OptionUser = { id: string; username: string };
+type OptionUser = { id: string; username: string; active?: boolean };
 type OptionTransporte = { id: string; nombre: string; tipo: string };
 type OptionPasajero = { id: string; nombre: string; direccion: string };
 
@@ -34,14 +35,19 @@ type AreaDetail = {
   celadoras: { user: OptionUser & { active: boolean; roles: string[] } }[];
   transportes: {
     transporte: OptionTransporte & {
-      celadoras: { user: OptionUser }[];
-      choferes: OptionUser[];
+      celadoras: { user: OptionUser & { active: boolean } }[];
+      choferes: (OptionUser & { active?: boolean })[];
     };
   }[];
-  pasajeros: { pasajero: OptionPasajero & { active: boolean } }[];
+  pasajeros: {
+    pasajero: OptionPasajero & { active: boolean };
+    destinoId: string | null;
+    destino: { id: string; nombre: string; domicilio: string; active: boolean } | null;
+  }[];
 };
 
 export function CoordinadoraDashboard() {
+  const popup = usePanelPopup();
   const [areas, setAreas] = useState<AreaSummary[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<string>('');
   const [detail, setDetail] = useState<AreaDetail | null>(null);
@@ -51,9 +57,6 @@ export function CoordinadoraDashboard() {
     pasajeros: OptionPasajero[];
   }>({ celadoras: [], transportes: [], pasajeros: [] });
   const [loading, setLoading] = useState(true);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
 
   const [newAreaName, setNewAreaName] = useState('');
   const [destinoForm, setDestinoForm] = useState({ nombre: '', domicilio: '' });
@@ -74,12 +77,13 @@ export function CoordinadoraDashboard() {
     const response = await fetch('/api/coord/areas');
     const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudieron cargar las áreas.' });
+      popup.error(body.message ?? 'No se pudieron cargar las áreas.');
       return [] as AreaSummary[];
     }
     const list = body.data as AreaSummary[];
     setAreas(list);
     return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   const loadDetail = useCallback(async (areaId: string) => {
@@ -90,11 +94,12 @@ export function CoordinadoraDashboard() {
     const response = await fetch(`/api/coord/areas/${areaId}`);
     const body = await response.json();
     if (!response.ok) {
-      setFeedback({ type: 'error', message: body.message ?? 'No se pudo cargar el área.' });
+      popup.error(body.message ?? 'No se pudo cargar el área.');
       return;
     }
     setDetail(body.data.area as AreaDetail);
     setOptions(body.data.options);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
   }, []);
 
   useEffect(() => {
@@ -119,14 +124,13 @@ export function CoordinadoraDashboard() {
 
   const createArea = async (event: FormEvent) => {
     event.preventDefault();
-    setFeedback(null);
 
     const missing = missingFieldsMessage(
       { nombre: newAreaName },
       { nombre: 'nombre del área' },
     );
     if (missing) {
-      setFeedback({ type: 'error', message: missing });
+      popup.error(missing);
       return;
     }
 
@@ -136,15 +140,12 @@ export function CoordinadoraDashboard() {
       body: JSON.stringify({ nombre: newAreaName }),
     });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo crear el área.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo crear el área.'));
       return;
     }
     const body = (await response.json()) as { message?: string; data?: { id: string } };
     setNewAreaName('');
-    setFeedback({ type: 'success', message: body.message ?? 'Área creada.' });
+    popup.success(body.message ?? 'Área creada.');
     await loadAreas();
     if (body.data?.id) setSelectedAreaId(body.data.id);
   };
@@ -152,17 +153,16 @@ export function CoordinadoraDashboard() {
   const createDestino = async (event: FormEvent) => {
     event.preventDefault();
     if (!selectedAreaId) {
-      setFeedback({ type: 'error', message: 'Seleccioná un área primero.' });
+      popup.error('Seleccioná un área primero.');
       return;
     }
-    setFeedback(null);
 
     const missing = missingFieldsMessage(
       { nombre: destinoForm.nombre, domicilio: destinoForm.domicilio },
       { nombre: 'nombre del destino', domicilio: 'domicilio' },
     );
     if (missing) {
-      setFeedback({ type: 'error', message: missing });
+      popup.error(missing);
       return;
     }
 
@@ -172,37 +172,34 @@ export function CoordinadoraDashboard() {
       body: JSON.stringify({ areaId: selectedAreaId, ...destinoForm }),
     });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo crear el destino.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo crear el destino.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
     setDestinoForm({ nombre: '', domicilio: '' });
-    setFeedback({ type: 'success', message: body.message ?? 'Destino creado.' });
+    popup.success(body.message ?? 'Destino creado.');
     await refresh();
   };
 
   const deleteDestino = async (id: string, nombre: string) => {
-    if (!window.confirm(`¿Eliminar destino "${nombre}"?`)) return;
+    const ok = await popup.confirm({
+      message: `¿Eliminar destino "${nombre}"?`,
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     const response = await fetch(`/api/coord/destinos/${id}`, { method: 'DELETE' });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo eliminar el destino.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo eliminar el destino.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
-    setFeedback({ type: 'success', message: body.message ?? 'Destino eliminado.' });
+    popup.success(body.message ?? 'Destino eliminado.');
     await refresh();
   };
 
-  const assign = async (payload: Record<string, string>) => {
-    setFeedback(null);
+  const assign = async (payload: Record<string, string | null>) => {
     if (!selectedAreaId) {
-      setFeedback({ type: 'error', message: 'Seleccioná un área primero.' });
+      popup.error('Seleccioná un área primero.');
       return;
     }
     const response = await fetch('/api/coord/asignaciones', {
@@ -211,14 +208,11 @@ export function CoordinadoraDashboard() {
       body: JSON.stringify({ areaId: selectedAreaId, ...payload }),
     });
     if (!response.ok) {
-      setFeedback({
-        type: 'error',
-        message: await readApiError(response, 'No se pudo actualizar la asignación.'),
-      });
+      popup.error(await readApiError(response, 'No se pudo actualizar la asignación.'));
       return;
     }
     const body = (await response.json()) as { message?: string };
-    setFeedback({ type: 'success', message: body.message ?? 'Asignación actualizada.' });
+    popup.success(body.message ?? 'Asignación actualizada.');
     await refresh();
   };
 
@@ -226,15 +220,33 @@ export function CoordinadoraDashboard() {
   const assignedTransporteIds = new Set(detail?.transportes.map((t) => t.transporte.id) ?? []);
   const assignedPasajeroIds = new Set(detail?.pasajeros.map((p) => p.pasajero.id) ?? []);
 
+  const unavailableCeladoras =
+    detail?.celadoras.filter((c) => !c.user.active).map((c) => c.user.username) ?? [];
+  const unavailablePasajeros =
+    detail?.pasajeros.filter((p) => !p.pasajero.active).map((p) => p.pasajero.nombre) ?? [];
+  const unavailableTransporteCeladoras =
+    detail?.transportes.flatMap((t) =>
+      t.transporte.celadoras
+        .filter((c) => !c.user.active)
+        .map((c) => c.user.username),
+    ) ?? [];
+  const hasUnavailableAssignments =
+    unavailableCeladoras.length > 0 ||
+    unavailablePasajeros.length > 0 ||
+    unavailableTransporteCeladoras.length > 0;
+
   if (loading) {
-    return <p className="panel-card__desc">Cargando panel...</p>;
+    return (
+      <>
+        {popup.popupNode}
+        <p className="panel-card__desc">Cargando panel...</p>
+      </>
+    );
   }
 
   return (
     <div className="coord-dashboard">
-      {feedback && (
-        <p className={`form-feedback form-feedback--${feedback.type}`}>{feedback.message}</p>
-      )}
+      {popup.popupNode}
 
       <section className="panel-card">
         <h2>Áreas</h2>
@@ -338,6 +350,33 @@ export function CoordinadoraDashboard() {
               Tocá cada sección para expandir o plegar el listado.
             </p>
 
+            {hasUnavailableAssignments && (
+              <div className="coord-unavailable-banner" role="status">
+                <span className="coord-unavailable-banner__icon" aria-hidden="true">
+                  !
+                </span>
+                <div>
+                  <strong>Hay asignaciones no disponibles por disposición del Admin.</strong>
+                  <p>
+                    Siguen en el área, pero no se pueden usar en grillas nuevas hasta que el Admin
+                    los reactive.
+                    {unavailableCeladoras.length > 0 && (
+                      <>
+                        {' '}
+                        Celadoras: {unavailableCeladoras.join(', ')}.
+                      </>
+                    )}
+                    {unavailablePasajeros.length > 0 && (
+                      <>
+                        {' '}
+                        Pasajeros: {unavailablePasajeros.join(', ')}.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="coord-assign-grid">
               <div className="coord-assign-block">
                 <button
@@ -387,8 +426,19 @@ export function CoordinadoraDashboard() {
                         <li className="coord-assign-empty">Sin celadoras asignadas.</li>
                       ) : (
                         detail.celadoras.map(({ user }) => (
-                          <li key={user.id} className="coord-chip">
-                            <span>{user.username}</span>
+                          <li
+                            key={user.id}
+                            className={`coord-chip${user.active ? '' : ' coord-chip--unavailable'}`}
+                          >
+                            <span>
+                              {user.username}
+                              {!user.active && (
+                                <small className="coord-chip__unavailable-note">
+                                  {' '}
+                                  — No disponible (Admin)
+                                </small>
+                              )}
+                            </span>
                             <button
                               type="button"
                               className="coord-chip__remove"
@@ -492,6 +542,7 @@ export function CoordinadoraDashboard() {
                                 {detail.celadoras
                                   .filter(
                                     (c) =>
+                                      c.user.active &&
                                       !transporte.celadoras.some(
                                         (tc) => tc.user.id === c.user.id,
                                       ),
@@ -506,8 +557,19 @@ export function CoordinadoraDashboard() {
                             {transporte.celadoras.length > 0 && (
                               <ul className="coord-chip-list">
                                 {transporte.celadoras.map(({ user }) => (
-                                  <li key={user.id} className="coord-chip">
-                                    <span>{user.username}</span>
+                                  <li
+                                    key={user.id}
+                                    className={`coord-chip${user.active ? '' : ' coord-chip--unavailable'}`}
+                                  >
+                                    <span>
+                                      {user.username}
+                                      {!user.active && (
+                                        <small className="coord-chip__unavailable-note">
+                                          {' '}
+                                          — No disponible (Admin)
+                                        </small>
+                                      )}
+                                    </span>
                                     <button
                                       type="button"
                                       className="coord-chip__remove"
@@ -542,12 +604,16 @@ export function CoordinadoraDashboard() {
                 >
                   <span className="coord-assign-toggle__title">
                     <span aria-hidden="true">{openAssign.pasajeros ? '▼' : '▶'}</span>
-                    Pasajeros
+                    Pasajeros y destinos
                   </span>
                   <span className="coord-assign-count">{detail.pasajeros.length}</span>
                 </button>
                 {openAssign.pasajeros && (
                   <div className="coord-assign-body">
+                    <p className="panel-card__desc">
+                      Asigná cada pasajero a su destino habitual. Así en la grilla se ve claro quién
+                      baja o sube en cada lugar.
+                    </p>
                     <div className="coord-assign-row">
                       <select
                         value={pickPasajero}
@@ -573,22 +639,52 @@ export function CoordinadoraDashboard() {
                           );
                         }}
                       >
-                        Asignar
+                        Asignar al área
                       </button>
                     </div>
-                    <ul className="coord-chip-list coord-chip-list--scroll">
+                    <ul className="coord-pasajero-destino-list">
                       {detail.pasajeros.length === 0 ? (
                         <li className="coord-assign-empty">Sin pasajeros asignados.</li>
                       ) : (
-                        detail.pasajeros.map(({ pasajero }) => (
-                          <li key={pasajero.id} className="coord-chip">
-                            <span>
-                              {pasajero.nombre}
-                              <small> — {pasajero.direccion}</small>
-                            </span>
+                        detail.pasajeros.map(({ pasajero, destinoId }) => (
+                          <li
+                            key={pasajero.id}
+                            className={`coord-pasajero-destino${pasajero.active ? '' : ' is-unavailable'}`}
+                          >
+                            <div className="coord-pasajero-destino__info">
+                              <strong>{pasajero.nombre}</strong>
+                              <small>{pasajero.direccion}</small>
+                              {!pasajero.active && (
+                                <small className="coord-chip__unavailable-note">
+                                  No disponible (Admin)
+                                </small>
+                              )}
+                            </div>
+                            <select
+                              className="admin-inline-select"
+                              value={destinoId ?? ''}
+                              aria-label={`Destino de ${pasajero.nombre}`}
+                              onChange={(e) => {
+                                void assign({
+                                  action: 'set_pasajero_destino',
+                                  pasajeroId: pasajero.id,
+                                  destinoId: e.target.value || null,
+                                });
+                              }}
+                            >
+                              <option value="">Sin destino</option>
+                              {detail.destinos
+                                .filter((d) => d.active)
+                                .map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.nombre}
+                                  </option>
+                                ))}
+                            </select>
                             <button
                               type="button"
                               className="coord-chip__remove"
+                              title="Quitar del área"
                               onClick={() =>
                                 void assign({
                                   action: 'remove_pasajero',
