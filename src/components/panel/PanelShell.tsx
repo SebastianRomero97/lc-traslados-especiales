@@ -11,6 +11,7 @@ import {
   type SessionUser,
 } from '@/lib/roles';
 import { LogoutButton } from '@/components/panel/LogoutButton';
+import { PanelSwitcher } from '@/components/panel/PanelSwitcher';
 
 export async function requireRole(allowed: Role | Role[]): Promise<SessionUser> {
   const session = await getSession();
@@ -46,16 +47,6 @@ export function PanelShell({
             <p className="panel-header__tag">{formatRoles(user.roles)}</p>
             <h1 className="panel-header__title">{title}</h1>
             <p className="panel-header__user">Sesión: {user.username}</p>
-            {showSwitcher && (
-              <nav className="panel-header__switcher" aria-label="Cambiar de panel">
-                <span className="panel-header__switcher-label">Ir a:</span>
-                {panels.map((panel) => (
-                  <Link key={panel.path} href={panel.path} className="panel-header__switcher-link">
-                    {panel.label}
-                  </Link>
-                ))}
-              </nav>
-            )}
           </div>
           <div className="panel-header__actions">
             <Link href="/" className="btn btn--outline">
@@ -65,7 +56,10 @@ export function PanelShell({
           </div>
         </div>
       </header>
-      <main className="panel-main">{children}</main>
+      <main className="panel-main">
+        {showSwitcher && <PanelSwitcher panels={panels} />}
+        {children}
+      </main>
     </div>
   );
 }

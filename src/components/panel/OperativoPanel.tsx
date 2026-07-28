@@ -293,44 +293,46 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
     <div className="operativo-panel">
       {popup.popupNode}
 
-      <div className="admin-tabs" role="tablist" aria-label="Secciones del panel operativo">
-        <button
-          type="button"
-          role="tab"
-          className={`admin-tabs__btn${seccion === 'principal' ? ' is-active' : ''}`}
-          aria-selected={seccion === 'principal'}
-          onClick={() => setSeccion('principal')}
-        >
-          Principal{grillasActivas.length > 0 ? ` (${grillasActivas.length})` : ''}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={`admin-tabs__btn${seccion === 'historial' ? ' is-active' : ''}`}
-          aria-selected={seccion === 'historial'}
-          onClick={() => setSeccion('historial')}
-        >
-          Historial{grillasHistorial.length > 0 ? ` (${grillasHistorial.length})` : ''}
-        </button>
-        {rol === 'CHOFER' && (
+      <div className="admin-tabs-shell">
+        <div className="admin-tabs" role="tablist" aria-label="Secciones del panel operativo">
           <button
             type="button"
             role="tab"
-            className={`admin-tabs__btn${seccion === 'vehiculo' ? ' is-active' : ''}`}
-            aria-selected={seccion === 'vehiculo'}
-            onClick={() => setSeccion('vehiculo')}
+            className={`admin-tabs__btn${seccion === 'principal' ? ' is-active' : ''}`}
+            aria-selected={seccion === 'principal'}
+            onClick={() => setSeccion('principal')}
           >
-            Vehículo asignado
+            Principal{grillasActivas.length > 0 ? ` (${grillasActivas.length})` : ''}
           </button>
-        )}
-      </div>
+          <button
+            type="button"
+            role="tab"
+            className={`admin-tabs__btn${seccion === 'historial' ? ' is-active' : ''}`}
+            aria-selected={seccion === 'historial'}
+            onClick={() => setSeccion('historial')}
+          >
+            Historial{grillasHistorial.length > 0 ? ` (${grillasHistorial.length})` : ''}
+          </button>
+          {rol === 'CHOFER' && (
+            <button
+              type="button"
+              role="tab"
+              className={`admin-tabs__btn${seccion === 'vehiculo' ? ' is-active' : ''}`}
+              aria-selected={seccion === 'vehiculo'}
+              onClick={() => setSeccion('vehiculo')}
+            >
+              Vehículo asignado
+            </button>
+          )}
+        </div>
 
+        <div className="admin-tabs__panel" role="tabpanel">
       {seccion === 'vehiculo' && rol === 'CHOFER' ? (
         <ChoferVehiculoSection />
       ) : loading ? (
         <p className="panel-card__desc">Cargando grillas asignadas...</p>
       ) : grillasSeccion.length === 0 ? (
-        <section className="panel-card">
+        <section className="panel-card panel-card--nested">
           <h2>{seccion === 'historial' ? 'Historial' : 'Principal'}</h2>
           <p className="panel-card__desc">
             {seccion === 'historial'
@@ -740,6 +742,8 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
           )}
         </>
       )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -36,30 +36,32 @@ export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
 
   return (
     <div className="admin-dashboard">
-      <div className="admin-tabs" role="tablist" aria-label="Secciones del panel admin">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            className={`admin-tabs__btn${tab === item.id ? ' is-active' : ''}`}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <div className="admin-tabs-shell">
+        <div className="admin-tabs" role="tablist" aria-label="Secciones del panel admin">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              className={`admin-tabs__btn${tab === item.id ? ' is-active' : ''}`}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="admin-tabs__panel" role="tabpanel">
-        {tab === 'usuarios' && <AdminUsersManager currentUserId={currentUserId} />}
-        {tab === 'transportes' && <AdminTransportesManager />}
-        {tab === 'pasajeros' && <AdminPasajerosManager />}
-        {tab === 'choferes' && <AdminChoferesManager />}
-        {tab === 'informe' && <InformeMetricasPanel />}
-        {tab === 'respaldo' && <RespaldoHistorialPanel />}
-        {tab === 'publicaciones' && <AdminPublicacionesManager />}
-        {tab === 'novedades' && <NovedadesVehiculoPanel />}
+        <div className="admin-tabs__panel" role="tabpanel">
+          {tab === 'usuarios' && <AdminUsersManager currentUserId={currentUserId} />}
+          {tab === 'transportes' && <AdminTransportesManager />}
+          {tab === 'pasajeros' && <AdminPasajerosManager />}
+          {tab === 'choferes' && <AdminChoferesManager />}
+          {tab === 'informe' && <InformeMetricasPanel />}
+          {tab === 'respaldo' && <RespaldoHistorialPanel />}
+          {tab === 'publicaciones' && <AdminPublicacionesManager />}
+          {tab === 'novedades' && <NovedadesVehiculoPanel />}
+        </div>
       </div>
     </div>
   );
