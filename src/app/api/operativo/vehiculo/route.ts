@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { data: novedad, message: 'Novedad enviada. Admin y Coordinadora podrán verla.' },
+      { data: novedad, message: 'Novedad enviada. Admin y Administración podrán verla.' },
       { status: 201 },
     );
   } catch (error) {

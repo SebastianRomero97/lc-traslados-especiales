@@ -1,9 +1,9 @@
-import { formatAccionFila, formatFechaGrilla } from '@/lib/grilla.utils';
+import { formatAccionFila, formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
 
 export type RespaldoGrilla = {
   id: string;
   fecha: string;
-  tipoItinerario: 'INGRESO' | 'SALIDA';
+  tipoItinerario: string;
   area: string;
   transporte: string;
   tipoTransporte: string;
@@ -22,7 +22,7 @@ export type RespaldoGrilla = {
   cancelo: number;
   noSePresento: number;
   filas: {
-    hora: string;
+    hora: string | null;
     direccion: string;
     pasajeroNombre: string;
     accion: string;
@@ -72,7 +72,7 @@ export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
     lines.push(
       [
         formatFechaGrilla(g.fecha),
-        g.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas',
+        labelTipoItinerario(g.tipoItinerario),
         g.area,
         g.transporte,
         g.tipoTransporte,
@@ -113,7 +113,7 @@ export function buildAsistenciasCsv(grillas: RespaldoGrilla[]): string {
       lines.push(
         [
           formatFechaGrilla(g.fecha),
-          g.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas',
+          labelTipoItinerario(g.tipoItinerario),
           g.area,
           g.transporte,
           a.pasajeroNombre,
@@ -145,7 +145,7 @@ export function buildRespaldoPrintHtml(params: {
       const filas = g.filas
         .map(
           (f) =>
-            `<tr><td>${escapeHtml(f.hora)}</td><td>${escapeHtml(f.direccion)}</td><td>${escapeHtml(
+            `<tr><td>${escapeHtml(f.hora ?? '—')}</td><td>${escapeHtml(f.direccion)}</td><td>${escapeHtml(
               formatAccionFila({
                 accion: f.accion,
                 pasajeroNombre: f.pasajeroNombre,
@@ -166,7 +166,7 @@ export function buildRespaldoPrintHtml(params: {
       return `
         <section class="grilla">
           <h2>${escapeHtml(formatFechaGrilla(g.fecha))} · ${
-            g.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'
+            labelTipoItinerario(g.tipoItinerario)
           } · ${escapeHtml(g.transporte)}</h2>
           <div class="meta">
             <div><strong>Área:</strong> ${escapeHtml(g.area)}</div>

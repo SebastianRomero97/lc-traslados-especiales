@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { formatAccionFila, formatFechaGrilla } from '@/lib/grilla.utils';
+import { formatAccionFila, formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type EstadoAsistencia = 'ASISTIO' | 'CANCELO' | 'NO_SE_PRESENTO';
@@ -21,7 +21,7 @@ type Registro = {
     responsables: string;
     filas: {
       id: string;
-      hora: string;
+      hora: string | null;
       direccion: string;
       pasajeroNombre: string;
       pasajeroId: string | null;
@@ -338,7 +338,7 @@ export function PasajeroHistorialView({
               <li key={f.id}>
                 <strong>
                   {formatFechaGrilla(f.fecha)} ·{' '}
-                  {f.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'} · {f.transporte}
+                  {labelTipoItinerario(f.tipoItinerario)} · {f.transporte}
                 </strong>
                 <span>
                   {f.estado === 'CANCELO' ? 'Canceló' : 'No se presentó'} · {f.area} ·{' '}
@@ -381,7 +381,7 @@ export function PasajeroHistorialView({
                         >
                           <strong>
                             {formatFechaGrilla(r.grilla.fecha)} ·{' '}
-                            {r.grilla.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'}
+                            {labelTipoItinerario(r.grilla.tipoItinerario)}
                           </strong>
                           <span>
                             {r.grilla.transporte} · {r.grilla.area} · {estadoLabel(r.estado)}
@@ -403,9 +403,7 @@ export function PasajeroHistorialView({
                   Grilla · {formatFechaGrilla(registroSeleccionado.grilla.fecha)}
                 </h3>
                 <p className="panel-popup__message">
-                  {registroSeleccionado.grilla.tipoItinerario === 'INGRESO'
-                    ? 'Ingresos'
-                    : 'Salidas'}{' '}
+                  {labelTipoItinerario(registroSeleccionado.grilla.tipoItinerario)}{' '}
                   · {registroSeleccionado.grilla.transporte} (
                   {registroSeleccionado.grilla.tipoTransporte}) ·{' '}
                   {registroSeleccionado.grilla.area}
@@ -439,7 +437,7 @@ export function PasajeroHistorialView({
                             data.pasajero.nombre.toLowerCase();
                         return (
                           <tr key={f.id} className={esEste ? 'is-selected' : undefined}>
-                            <td>{f.hora}</td>
+                            <td>{f.hora ?? '—'}</td>
                             <td>{f.direccion}</td>
                             <td>
                               {formatAccionFila({

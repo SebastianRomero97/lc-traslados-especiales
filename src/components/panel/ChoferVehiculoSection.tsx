@@ -116,7 +116,7 @@ export function ChoferVehiculoSection() {
 
             <h3 className="chofer-vehiculo__subtitulo">Notificar novedad</h3>
             <p className="panel-card__desc">
-              Cualquier novedad (falla, ruido, luces, etc.) queda visible para Admin y Coordinadora.
+              Cualquier novedad (falla, ruido, luces, etc.) queda visible para Admin y Administración.
             </p>
             <form className="chofer-vehiculo__form" onSubmit={handleSubmit}>
               <textarea

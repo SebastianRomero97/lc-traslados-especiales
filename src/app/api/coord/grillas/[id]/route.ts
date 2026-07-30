@@ -5,9 +5,11 @@ import { requireCoordinadoraApi } from '@/lib/coordinadora-auth';
 import {
   buildGrillaTitulo,
   buildGrillaWhatsAppText,
+  isTipoItinerario,
   normalizeAccion,
   type GrillaFilaInput,
 } from '@/lib/grilla.utils';
+import { filaCoordsData, syncCoordsToSources } from '@/lib/coords-sync';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,6 +18,17 @@ const grillaInclude = {
   transporte: { select: { id: true, nombre: true, tipo: true } },
   chofer: { select: { id: true, username: true } },
   celadora: { select: { id: true, username: true } },
+  puntoEncuentro: {
+    select: {
+      id: true,
+      nombre: true,
+      direccion: true,
+      frecuente: true,
+      lat: true,
+      lon: true,
+      usarCoordsParaChofer: true,
+    },
+  },
   filas: {
     orderBy: { orden: 'asc' as const },
     include: {
@@ -76,9 +89,15 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const body = (await request.json()) as {
+      nombre?: string;
       nota?: string | null;
+      tipoItinerario?: string;
+      fecha?: string;
+      transporteId?: string;
+      choferId?: string;
       conCeladora?: boolean;
       celadoraId?: string | null;
+      puntoEncuentroId?: string | null;
       filas?: GrillaFilaInput[];
     };
 
@@ -87,7 +106,39 @@ export async function PATCH(request: Request, { params }: Params) {
       body.celadoraId === undefined
         ? existing.celadoraId
         : body.celadoraId?.trim() || null;
+    const puntoEncuentroId =
+      body.puntoEncuentroId === undefined
+        ? existing.puntoEncuentroId
+        : body.puntoEncuentroId?.trim() || null;
+    const transporteId =
+      body.transporteId === undefined
+        ? existing.transporteId
+        : body.transporteId.trim();
+    const choferId =
+      body.choferId === undefined ? existing.choferId : body.choferId.trim();
+    const tipoItinerarioRaw =
+      body.tipoItinerario === undefined ? existing.tipoItinerario : body.tipoItinerario.trim();
+    if (!isTipoItinerario(tipoItinerarioRaw)) {
+      return NextResponse.json(
+        { message: 'El tipo de itinerario no es válido.' },
+        { status: 400 },
+      );
+    }
+    const tipoItinerario = tipoItinerarioRaw;
+    const fecha =
+      body.fecha === undefined
+        ? existing.fecha
+        : new Date(`${body.fecha.trim()}T00:00:00.000Z`);
 
+    if (!transporteId) {
+      return NextResponse.json({ message: 'Seleccioná un transporte.' }, { status: 400 });
+    }
+    if (!choferId) {
+      return NextResponse.json({ message: 'Seleccioná un chofer.' }, { status: 400 });
+    }
+    if (body.fecha !== undefined && Number.isNaN(fecha.getTime())) {
+      return NextResponse.json({ message: 'Fecha inválida.' }, { status: 400 });
+    }
     if (conCeladora && !celadoraId) {
       return NextResponse.json(
         { message: 'Si el recorrido es con celadora, seleccioná una celadora.' },
@@ -95,17 +146,52 @@ export async function PATCH(request: Request, { params }: Params) {
       );
     }
 
+    if (body.transporteId !== undefined) {
+      const transporte = await prisma.transporte.findUnique({ where: { id: transporteId } });
+      if (!transporte) {
+        return NextResponse.json({ message: 'El transporte seleccionado no existe.' }, { status: 400 });
+      }
+    }
+    if (body.choferId !== undefined) {
+      const chofer = await prisma.user.findUnique({ where: { id: choferId } });
+      if (!chofer || !chofer.roles.includes('CHOFER')) {
+        return NextResponse.json(
+          { message: 'El chofer seleccionado no es válido.' },
+          { status: 400 },
+        );
+      }
+    }
+    if (celadoraId && body.celadoraId !== undefined) {
+      const celadora = await prisma.user.findUnique({ where: { id: celadoraId } });
+      if (!celadora || !celadora.roles.includes('CELADORA')) {
+        return NextResponse.json(
+          { message: 'La celadora seleccionada no es válida.' },
+          { status: 400 },
+        );
+      }
+    }
+
     const grilla = await prisma.$transaction(async (tx) => {
       if (body.filas) {
         if (body.filas.length === 0) {
           throw new Error('EMPTY_FILAS');
+        }
+        for (let i = 0; i < body.filas.length; i++) {
+          const fila = body.filas[i];
+          const n = i + 1;
+          if (fila.destinoId && !fila.hora?.trim()) {
+            throw new Error(`DESTINO_SIN_HORA:${n}`);
+          }
+          if (!fila.direccion?.trim() || !fila.pasajeroNombre?.trim() || !fila.accion) {
+            throw new Error(`FILA_INCOMPLETA:${n}`);
+          }
         }
         await tx.grillaFila.deleteMany({ where: { grillaId: id } });
         await tx.grillaFila.createMany({
           data: body.filas.map((fila, index) => ({
             grillaId: id,
             orden: index + 1,
-            hora: fila.hora.trim(),
+            hora: fila.hora?.trim() || null,
             direccion: fila.direccion.trim(),
             pasajeroNombre: fila.pasajeroNombre.trim(),
             pasajeroId: fila.pasajeroId || null,
@@ -115,16 +201,24 @@ export async function PATCH(request: Request, { params }: Params) {
               normalizeAccion(fila.accion) === 'TRASBORDO'
                 ? fila.trasbordoHacia?.trim() || null
                 : null,
+            ...filaCoordsData(fila),
           })),
         });
+        await syncCoordsToSources(tx, body.filas);
       }
 
       return tx.grilla.update({
         where: { id },
         data: {
+          nombre: body.nombre === undefined ? undefined : body.nombre.trim() || existing.nombre,
           nota: body.nota === undefined ? undefined : body.nota?.trim() || null,
+          tipoItinerario,
+          fecha,
+          transporteId,
+          choferId,
           conCeladora,
           celadoraId: conCeladora ? celadoraId : null,
+          puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
         },
         include: grillaInclude,
       });
@@ -135,6 +229,20 @@ export async function PATCH(request: Request, { params }: Params) {
     if (error instanceof Error && error.message === 'EMPTY_FILAS') {
       return NextResponse.json(
         { message: 'La grilla debe tener al menos una fila.' },
+        { status: 400 },
+      );
+    }
+    if (error instanceof Error && error.message.startsWith('DESTINO_SIN_HORA:')) {
+      const n = error.message.split(':')[1];
+      return NextResponse.json(
+        { message: `Indicá la hora del destino (fila ${n}).` },
+        { status: 400 },
+      );
+    }
+    if (error instanceof Error && error.message.startsWith('FILA_INCOMPLETA:')) {
+      const n = error.message.split(':')[1];
+      return NextResponse.json(
+        { message: `Completá dirección y detalle de la fila ${n}.` },
         { status: 400 },
       );
     }

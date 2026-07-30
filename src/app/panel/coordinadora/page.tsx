@@ -6,11 +6,12 @@ export default async function CoordinadoraPanelPage() {
   const user = await requireRole(['COORDINADORA', 'ADMIN']);
 
   return (
-    <PanelShell user={user} title="Panel Coordinadora">
+    <PanelShell user={user} title="Panel Administración">
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>
-          Gestioná áreas, asignaciones y grillas (hojas de ruta) para compartir con el equipo.
+          Elegí un área, asigná recursos y armá grillas (hojas de ruta) para el equipo. Las áreas y
+          destinos los gestiona Admin.
         </p>
       </section>
 

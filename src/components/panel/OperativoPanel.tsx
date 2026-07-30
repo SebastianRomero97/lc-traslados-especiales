@@ -8,15 +8,15 @@ import {
   buildGrillaTitulo,
   formatAccionFila,
   formatFechaGrilla,
+  labelTipoItinerario,
 } from '@/lib/grilla.utils';
 import {
   extractItemsParaControl,
   formatDuration,
   labelsParaControl,
-  mapsUrl,
+  navUrlsParaChofer,
   NIVELES_COMBUSTIBLE,
   NIVEL_COMBUSTIBLE_LABEL,
-  wazeUrl,
   type EstadoAsistencia,
   type NivelCombustible,
 } from '@/lib/operativo.utils';
@@ -31,7 +31,8 @@ type Asistencia = {
 
 type GrillaOperativa = {
   id: string;
-  tipoItinerario: 'INGRESO' | 'SALIDA';
+  nombre?: string | null;
+  tipoItinerario: string;
   fecha: string;
   nota: string | null;
   conCeladora: boolean;
@@ -48,15 +49,27 @@ type GrillaOperativa = {
   transporte: { id: string; nombre: string; tipo: string };
   chofer: { id: string; username: string };
   celadora: { id: string; username: string } | null;
+  puntoEncuentro?: {
+    id: string;
+    nombre: string | null;
+    direccion: string;
+    frecuente: boolean;
+    lat?: number | null;
+    lon?: number | null;
+    usarCoordsParaChofer?: boolean;
+  } | null;
   filas: {
     id: string;
-    hora: string;
+    hora: string | null;
     direccion: string;
     pasajeroNombre: string;
     pasajeroId: string | null;
     destinoId: string | null;
     accion: 'SUBE' | 'BAJA' | 'TRASBORDO';
     trasbordoHacia: string | null;
+    lat?: number | null;
+    lon?: number | null;
+    usarCoordsParaChofer?: boolean;
   }[];
   asistencias: Asistencia[];
 };
@@ -278,8 +291,6 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
     (!selected?.conCeladora || Boolean(choferForm.celadora.trim()));
 
   const itemsControl = selected ? extractItemsParaControl(selected.filas) : [];
-  const pasajeros = itemsControl.filter((i) => i.tipo === 'pasajero');
-  const destinos = itemsControl.filter((i) => i.tipo === 'destino');
 
   const asistenciaMap = useMemo(() => {
     const map = new Map<string, Asistencia>();
@@ -337,7 +348,7 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
           <p className="panel-card__desc">
             {seccion === 'historial'
               ? 'Todavía no hay grillas completadas.'
-              : 'No hay grillas nuevas asignadas. Cuando la coordinadora te asigne una, va a aparecer acá.'}
+              : 'No hay grillas nuevas asignadas. Cuando Administración te asigne una, va a aparecer acá.'}
           </p>
         </section>
       ) : (
@@ -359,17 +370,19 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                 >
                   <strong>{formatFechaGrilla(g.fecha)}</strong>
                   <span>
-                    {g.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'} · {g.transporte.nombre}
+                    {g.nombre ? `${g.nombre} · ` : ''}
+                    {labelTipoItinerario(g.tipoItinerario)} · {g.transporte.nombre}
                   </span>
                 </button>
               ))}
             </div>
           </section>
 
-          {selected && (
+              {selected && (
             <>
               <section className="panel-card">
                 <h2>
+                  {selected.nombre ? `${selected.nombre} — ` : ''}
                   {buildGrillaTitulo({
                     tipoItinerario: selected.tipoItinerario,
                     transporteNombre: selected.transporte.nombre,
@@ -383,6 +396,16 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                     : ' · Sin celadora'}
                   {' · '}Tipo: {selected.transporte.tipo}
                 </p>
+                {selected.conCeladora && (
+                  <p className="panel-card__desc" style={{ marginTop: '-0.35rem' }}>
+                    Punto de encuentro:{' '}
+                    {selected.puntoEncuentro
+                      ? selected.puntoEncuentro.nombre
+                        ? `${selected.puntoEncuentro.nombre} — ${selected.puntoEncuentro.direccion}`
+                        : selected.puntoEncuentro.direccion
+                      : 'Parte de base (sin punto aparte)'}
+                  </p>
+                )}
                 {selected.nota && <p className="grilla-preview__nota">{selected.nota}</p>}
 
                 <div className="operativo-reloj">
@@ -430,181 +453,9 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                 </div>
               </section>
 
-              <section className="panel-card">
-                <h2>Itinerario</h2>
-                <div className="admin-users__table-wrap">
-                  <table className="admin-users__table">
-                    <thead>
-                      <tr>
-                        <th>Hora</th>
-                        <th>Parada / dirección</th>
-                        <th>Acción</th>
-                        {rol === 'CHOFER' && <th>Mapa</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selected.filas.map((f) => (
-                        <tr key={f.id}>
-                          <td>{f.hora}</td>
-                          <td>{f.direccion}</td>
-                          <td>
-                            {formatAccionFila({
-                              accion: f.accion,
-                              pasajeroNombre: f.pasajeroNombre,
-                              trasbordoHacia: f.trasbordoHacia,
-                            })}
-                          </td>
-                          {rol === 'CHOFER' && (
-                            <td className="admin-actions">
-                              {f.direccion.trim() ? (
-                                <>
-                                  <a
-                                    className="btn btn--outline btn--sm"
-                                    href={mapsUrl(f.direccion)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    Maps
-                                  </a>
-                                  <a
-                                    className="btn btn--outline btn--sm"
-                                    href={wazeUrl(f.direccion)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    Waze
-                                  </a>
-                                </>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              {puedeAsistencia && (
-                <section className="panel-card">
-                  <h2>Asistencia y destinos</h2>
-                  <p className="panel-card__desc">
-                    En pasajeros marcá la asistencia. En destinos, si la llegada se completó.
-                    {!inicioAt && ' (Podés registrar desde el inicio del recorrido.)'}
-                  </p>
-                  {itemsControl.length === 0 ? (
-                    <p className="panel-card__desc">
-                      Esta grilla no tiene pasajeros ni destinos para marcar.
-                    </p>
-                  ) : (
-                    <ul className="operativo-asistencia-list">
-                      {itemsControl.map((item) => {
-                        const labels = labelsParaControl(item.tipo);
-                        const actual = asistenciaMap.get(item.pasajeroNombre.toLowerCase());
-                        return (
-                          <li
-                            key={`${item.tipo}-${item.pasajeroNombre}`}
-                            className="operativo-asistencia-item"
-                          >
-                            <div>
-                              <span className="operativo-item-tipo">
-                                {item.tipo === 'destino' ? 'Destino' : 'Pasajero'}
-                              </span>
-                              <strong>{item.pasajeroNombre}</strong>
-                              {actual && (
-                                <span className="operativo-asistencia-estado">
-                                  {' '}
-                                  · {labels[actual.estado]}
-                                  {actual.motivoCancelacion
-                                    ? ` (${actual.motivoCancelacion})`
-                                    : ''}
-                                </span>
-                              )}
-                            </div>
-                            <div className="admin-actions">
-                              {(
-                                ['ASISTIO', 'CANCELO', 'NO_SE_PRESENTO'] as EstadoAsistencia[]
-                              ).map((estado) => (
-                                <button
-                                  key={estado}
-                                  type="button"
-                                  className={`btn btn--sm${
-                                    actual?.estado === estado
-                                      ? ' btn--primary'
-                                      : ' btn--outline'
-                                  }`}
-                                  disabled={busy || Boolean(finAt) || jornadaCerrada}
-                                  onClick={() =>
-                                    void saveAsistencia(
-                                      item.pasajeroNombre,
-                                      item.pasajeroId,
-                                      estado,
-                                    )
-                                  }
-                                >
-                                  {labels[estado]}
-                                </button>
-                              ))}
-                            </div>
-                            {(actual?.estado === 'CANCELO' ||
-                              motivos[item.pasajeroNombre] !== undefined) && (
-                              <input
-                                className="operativo-motivo"
-                                placeholder={
-                                  item.tipo === 'destino'
-                                    ? 'Motivo (opcional)'
-                                    : 'Motivo de cancelación (opcional)'
-                                }
-                                value={
-                                  motivos[item.pasajeroNombre] ??
-                                  actual?.motivoCancelacion ??
-                                  ''
-                                }
-                                disabled={busy || Boolean(finAt) || jornadaCerrada}
-                                onChange={(e) =>
-                                  setMotivos((prev) => ({
-                                    ...prev,
-                                    [item.pasajeroNombre]: e.target.value,
-                                  }))
-                                }
-                                onBlur={() => {
-                                  if (actual?.estado === 'CANCELO') {
-                                    void saveAsistencia(
-                                      item.pasajeroNombre,
-                                      item.pasajeroId,
-                                      'CANCELO',
-                                    );
-                                  }
-                                }}
-                              />
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  {pasajeros.length > 0 && destinos.length > 0 && (
-                    <p className="panel-card__desc" style={{ marginTop: '0.75rem' }}>
-                      {pasajeros.length} pasajero{pasajeros.length === 1 ? '' : 's'} ·{' '}
-                      {destinos.length} destino{destinos.length === 1 ? '' : 's'}
-                    </p>
-                  )}
-                </section>
-              )}
-
-              {rol === 'CHOFER' && selected.conCeladora && (
-                <section className="panel-card">
-                  <p className="panel-card__desc">
-                    Este recorrido va <strong>con celadora</strong>: la asistencia la registra{' '}
-                    {selected.celadora?.username ?? 'la celadora'}.
-                  </p>
-                </section>
-              )}
-
-              {finAt && (
-                <section className="panel-card">
+              {/* Celadora: el informe va arriba al finalizar, para que no pase desapercibido */}
+              {rol === 'CELADORA' && finAt && (
+                <section className="panel-card panel-card--informe-destacado">
                   <h2>Informe de observaciones</h2>
                   {jornadaCerrada ? (
                     <div className="operativo-jornada-ok" role="status">
@@ -613,111 +464,18 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                       </p>
                       <p>Gracias por tu compromiso con LC</p>
                       <p className="panel-card__desc" style={{ marginBottom: 0, marginTop: '0.75rem' }}>
-                        Esta grilla quedó cerrada: ya no se pueden modificar asistencias, destinos ni
-                        el informe.
+                        Esta grilla quedó cerrada: ya no se pueden modificar asistencias ni el
+                        informe.
                       </p>
-                      {rol === 'CHOFER' ? (
-                        <div className="operativo-informe-resumen">
-                          {selected.conCeladora && selected.informeChoferCeladora && (
-                            <p>
-                              <strong>Celadora:</strong> {selected.informeChoferCeladora}
-                            </p>
-                          )}
-                          {selected.informeChoferVehiculo && (
-                            <p>
-                              <strong>Vehículo:</strong> {selected.informeChoferVehiculo}
-                            </p>
-                          )}
-                          {selected.combustibleNivel && (
-                            <p>
-                              <strong>Combustible:</strong>{' '}
-                              {NIVEL_COMBUSTIBLE_LABEL[selected.combustibleNivel]}
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        informe.trim() && (
-                          <blockquote className="operativo-informe-readonly">{informe}</blockquote>
-                        )
+                      {informe.trim() && (
+                        <blockquote className="operativo-informe-readonly">{informe}</blockquote>
                       )}
                     </div>
-                  ) : rol === 'CHOFER' ? (
-                    <>
-                      <p className="panel-card__desc">
-                        Completá los 3 puntos del informe. Al guardar se cierra la jornada (punto de
-                        no retorno).
-                      </p>
-
-                      {selected.conCeladora && (
-                        <div className="form-group">
-                          <label htmlFor="inf-celadora">Sobre la celadora</label>
-                          <textarea
-                            id="inf-celadora"
-                            className="operativo-informe"
-                            rows={2}
-                            value={choferForm.celadora}
-                            onChange={(e) =>
-                              setChoferForm((p) => ({ ...p, celadora: e.target.value }))
-                            }
-                            placeholder="La celadora destaca en su trabajo realizando..."
-                          />
-                        </div>
-                      )}
-
-                      <div className="form-group">
-                        <label htmlFor="inf-vehiculo">Sobre el vehículo</label>
-                        <textarea
-                          id="inf-vehiculo"
-                          className="operativo-informe"
-                          rows={2}
-                          value={choferForm.vehiculo}
-                          onChange={(e) =>
-                            setChoferForm((p) => ({ ...p, vehiculo: e.target.value }))
-                          }
-                          placeholder="El vehículo no presenta fallas que notificar"
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label htmlFor="inf-combustible">Nivel de combustible</label>
-                        <select
-                          id="inf-combustible"
-                          className="admin-inline-select"
-                          value={choferForm.combustible}
-                          onChange={(e) =>
-                            setChoferForm((p) => ({
-                              ...p,
-                              combustible: e.target.value as '' | NivelCombustible,
-                            }))
-                          }
-                        >
-                          <option value="">Seleccionar nivel</option>
-                          {NIVELES_COMBUSTIBLE.map((n) => (
-                            <option key={n.value} value={n.value}>
-                              {n.label}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="panel-card__desc" style={{ marginTop: '0.35rem' }}>
-                          Misma escala para todos los vehículos (vacío → lleno), para poder comparar
-                          consumo a futuro.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn btn--primary"
-                        disabled={busy || !choferInformeListo}
-                        onClick={() => void saveInforme()}
-                      >
-                        Guardar informe y cerrar jornada
-                      </button>
-                    </>
                   ) : (
                     <>
                       <p className="panel-card__desc">
                         Al guardar el informe se cierra la jornada (punto de no retorno). Visible
-                        para Admin y Coordinadora.
+                        para Admin y Administración.
                       </p>
                       <textarea
                         className="operativo-informe"
@@ -737,6 +495,468 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                     </>
                   )}
                 </section>
+              )}
+
+              {rol === 'CELADORA' ? (
+                <section className="panel-card">
+                  <h2>Ruta</h2>
+                  <p className="panel-card__desc">
+                    Marcá asistencia una vez por pasajero. En destinos: Completado u Observación.
+                    {!inicioAt && ' Podés registrar desde el inicio del recorrido.'}
+                  </p>
+                  {selected.filas.length === 0 ? (
+                    <p className="panel-card__desc">Esta grilla no tiene paradas.</p>
+                  ) : (
+                    <ul className="operativo-ruta-list">
+                      {selected.filas.map((f) => {
+                        const esDestino = Boolean(f.destinoId) && !f.pasajeroId;
+                        const keyNombre = f.pasajeroNombre.trim();
+                        const actual = asistenciaMap.get(keyNombre.toLowerCase());
+                        const locked = busy || Boolean(finAt) || jornadaCerrada;
+                        const mostrarObs =
+                          esDestino
+                            ? actual?.estado === 'CANCELO' ||
+                              motivos[keyNombre] !== undefined
+                            : actual?.estado === 'CANCELO' ||
+                              motivos[keyNombre] !== undefined;
+
+                        return (
+                          <li key={f.id} className="operativo-ruta-item">
+                            <div className="operativo-ruta-item__meta">
+                              <span className="operativo-ruta-item__hora">
+                                {f.hora?.trim() || '—'}
+                              </span>
+                              <div className="operativo-ruta-item__detalle">
+                                <span className="operativo-item-tipo">
+                                  {esDestino ? 'Destino' : 'Pasajero'}
+                                </span>
+                                <strong>{keyNombre || '—'}</strong>
+                                <span className="operativo-ruta-item__accion">
+                                  {f.accion === 'SUBE'
+                                    ? 'Sube'
+                                    : f.accion === 'BAJA'
+                                      ? 'Baja'
+                                      : f.trasbordoHacia?.trim()
+                                        ? `Trasbordo → ${f.trasbordoHacia.trim()}`
+                                        : 'Trasbordo'}
+                                </span>
+                                {actual && (
+                                  <span className="operativo-asistencia-estado">
+                                    ·{' '}
+                                    {esDestino
+                                      ? actual.estado === 'ASISTIO'
+                                        ? 'Completado'
+                                        : 'Con observación'
+                                      : actual.estado === 'ASISTIO'
+                                        ? 'Asistió'
+                                        : 'Canceló'}
+                                    {actual.motivoCancelacion
+                                      ? ` (${actual.motivoCancelacion})`
+                                      : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {puedeAsistencia && keyNombre && (
+                              <div className="operativo-ruta-item__acciones">
+                                {esDestino ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className={`btn btn--sm${
+                                        actual?.estado === 'ASISTIO'
+                                          ? ' btn--primary'
+                                          : ' btn--outline'
+                                      }`}
+                                      disabled={locked}
+                                      onClick={() =>
+                                        void saveAsistencia(keyNombre, f.pasajeroId, 'ASISTIO')
+                                      }
+                                    >
+                                      Completado
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`btn btn--sm${
+                                        actual?.estado === 'CANCELO'
+                                          ? ' btn--primary'
+                                          : ' btn--outline'
+                                      }`}
+                                      disabled={locked}
+                                      onClick={() => {
+                                        setMotivos((prev) =>
+                                          prev[keyNombre] !== undefined
+                                            ? prev
+                                            : { ...prev, [keyNombre]: actual?.motivoCancelacion ?? '' },
+                                        );
+                                        void saveAsistencia(keyNombre, f.pasajeroId, 'CANCELO');
+                                      }}
+                                    >
+                                      Observación
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className={`btn btn--sm${
+                                        actual?.estado === 'ASISTIO'
+                                          ? ' btn--primary'
+                                          : ' btn--outline'
+                                      }`}
+                                      disabled={locked}
+                                      onClick={() =>
+                                        void saveAsistencia(keyNombre, f.pasajeroId, 'ASISTIO')
+                                      }
+                                    >
+                                      Asistió
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`btn btn--sm${
+                                        actual?.estado === 'CANCELO'
+                                          ? ' btn--primary'
+                                          : ' btn--outline'
+                                      }`}
+                                      disabled={locked}
+                                      onClick={() => {
+                                        setMotivos((prev) =>
+                                          prev[keyNombre] !== undefined
+                                            ? prev
+                                            : { ...prev, [keyNombre]: actual?.motivoCancelacion ?? '' },
+                                        );
+                                        void saveAsistencia(keyNombre, f.pasajeroId, 'CANCELO');
+                                      }}
+                                    >
+                                      Canceló
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            {puedeAsistencia && mostrarObs && keyNombre && (
+                              <input
+                                className="operativo-motivo"
+                                placeholder={
+                                  esDestino
+                                    ? 'Observación (opcional)'
+                                    : 'Observación (ej. no se presentó, canceló el viaje…)'
+                                }
+                                value={
+                                  motivos[keyNombre] ?? actual?.motivoCancelacion ?? ''
+                                }
+                                disabled={locked}
+                                onChange={(e) =>
+                                  setMotivos((prev) => ({
+                                    ...prev,
+                                    [keyNombre]: e.target.value,
+                                  }))
+                                }
+                                onBlur={() => {
+                                  if (actual?.estado === 'CANCELO') {
+                                    void saveAsistencia(keyNombre, f.pasajeroId, 'CANCELO');
+                                  }
+                                }}
+                              />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
+              ) : (
+                <>
+                  <section className="panel-card">
+                    <h2>Itinerario</h2>
+                    <div className="admin-users__table-wrap">
+                      <table className="admin-users__table">
+                        <thead>
+                          <tr>
+                            <th>Hora</th>
+                            <th>Parada / dirección</th>
+                            <th>Acción</th>
+                            <th>Mapa</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selected.filas.map((f) => (
+                            <tr key={f.id}>
+                              <td>{f.hora ?? '—'}</td>
+                              <td>{f.direccion}</td>
+                              <td>
+                                {formatAccionFila({
+                                  accion: f.accion,
+                                  pasajeroNombre: f.pasajeroNombre,
+                                  trasbordoHacia: f.trasbordoHacia,
+                                })}
+                              </td>
+                              <td className="admin-actions">
+                                {f.direccion.trim() ? (
+                                  <>
+                                    {(() => {
+                                      const urls = navUrlsParaChofer({
+                                        direccion: f.direccion,
+                                        lat: f.lat,
+                                        lon: f.lon,
+                                        usarCoordsParaChofer: f.usarCoordsParaChofer,
+                                      });
+                                      return (
+                                        <>
+                                          <a
+                                            className="btn btn--outline btn--sm"
+                                            href={urls.maps}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Maps
+                                          </a>
+                                          <a
+                                            className="btn btn--outline btn--sm"
+                                            href={urls.waze}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Waze
+                                          </a>
+                                        </>
+                                      );
+                                    })()}
+                                  </>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  {puedeAsistencia && (
+                    <section className="panel-card">
+                      <h2>Asistencia y destinos</h2>
+                      <p className="panel-card__desc">
+                        En pasajeros marcá la asistencia. En destinos, si la llegada se completó.
+                        {!inicioAt && ' (Podés registrar desde el inicio del recorrido.)'}
+                      </p>
+                      {itemsControl.length === 0 ? (
+                        <p className="panel-card__desc">
+                          Esta grilla no tiene pasajeros ni destinos para marcar.
+                        </p>
+                      ) : (
+                        <ul className="operativo-asistencia-list">
+                          {itemsControl.map((item) => {
+                            const labels = labelsParaControl(item.tipo);
+                            const actual = asistenciaMap.get(item.pasajeroNombre.toLowerCase());
+                            return (
+                              <li
+                                key={`${item.tipo}-${item.pasajeroNombre}`}
+                                className="operativo-asistencia-item"
+                              >
+                                <div>
+                                  <span className="operativo-item-tipo">
+                                    {item.tipo === 'destino' ? 'Destino' : 'Pasajero'}
+                                  </span>
+                                  <strong>{item.pasajeroNombre}</strong>
+                                  {actual && (
+                                    <span className="operativo-asistencia-estado">
+                                      {' '}
+                                      · {labels[actual.estado]}
+                                      {actual.motivoCancelacion
+                                        ? ` (${actual.motivoCancelacion})`
+                                        : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="admin-actions">
+                                  {(
+                                    ['ASISTIO', 'CANCELO', 'NO_SE_PRESENTO'] as EstadoAsistencia[]
+                                  ).map((estado) => (
+                                    <button
+                                      key={estado}
+                                      type="button"
+                                      className={`btn btn--sm${
+                                        actual?.estado === estado
+                                          ? ' btn--primary'
+                                          : ' btn--outline'
+                                      }`}
+                                      disabled={busy || Boolean(finAt) || jornadaCerrada}
+                                      onClick={() =>
+                                        void saveAsistencia(
+                                          item.pasajeroNombre,
+                                          item.pasajeroId,
+                                          estado,
+                                        )
+                                      }
+                                    >
+                                      {labels[estado]}
+                                    </button>
+                                  ))}
+                                </div>
+                                {(actual?.estado === 'CANCELO' ||
+                                  motivos[item.pasajeroNombre] !== undefined) && (
+                                  <input
+                                    className="operativo-motivo"
+                                    placeholder={
+                                      item.tipo === 'destino'
+                                        ? 'Motivo (opcional)'
+                                        : 'Motivo de cancelación (opcional)'
+                                    }
+                                    value={
+                                      motivos[item.pasajeroNombre] ??
+                                      actual?.motivoCancelacion ??
+                                      ''
+                                    }
+                                    disabled={busy || Boolean(finAt) || jornadaCerrada}
+                                    onChange={(e) =>
+                                      setMotivos((prev) => ({
+                                        ...prev,
+                                        [item.pasajeroNombre]: e.target.value,
+                                      }))
+                                    }
+                                    onBlur={() => {
+                                      if (actual?.estado === 'CANCELO') {
+                                        void saveAsistencia(
+                                          item.pasajeroNombre,
+                                          item.pasajeroId,
+                                          'CANCELO',
+                                        );
+                                      }
+                                    }}
+                                  />
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </section>
+                  )}
+
+                  {selected.conCeladora && (
+                    <section className="panel-card">
+                      <p className="panel-card__desc">
+                        Este recorrido va <strong>con celadora</strong>: la asistencia la registra{' '}
+                        {selected.celadora?.username ?? 'la celadora'}.
+                      </p>
+                    </section>
+                  )}
+
+                  {finAt && (
+                    <section className="panel-card">
+                      <h2>Informe de observaciones</h2>
+                      {jornadaCerrada ? (
+                        <div className="operativo-jornada-ok" role="status">
+                          <p className="operativo-jornada-ok__title">
+                            Jornada Completada Exitosamente
+                          </p>
+                          <p>Gracias por tu compromiso con LC</p>
+                          <p
+                            className="panel-card__desc"
+                            style={{ marginBottom: 0, marginTop: '0.75rem' }}
+                          >
+                            Esta grilla quedó cerrada: ya no se pueden modificar asistencias,
+                            destinos ni el informe.
+                          </p>
+                          <div className="operativo-informe-resumen">
+                            {selected.conCeladora && selected.informeChoferCeladora && (
+                              <p>
+                                <strong>Celadora:</strong> {selected.informeChoferCeladora}
+                              </p>
+                            )}
+                            {selected.informeChoferVehiculo && (
+                              <p>
+                                <strong>Vehículo:</strong> {selected.informeChoferVehiculo}
+                              </p>
+                            )}
+                            {selected.combustibleNivel && (
+                              <p>
+                                <strong>Combustible:</strong>{' '}
+                                {NIVEL_COMBUSTIBLE_LABEL[selected.combustibleNivel]}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="panel-card__desc">
+                            Completá los 3 puntos del informe. Al guardar se cierra la jornada
+                            (punto de no retorno).
+                          </p>
+
+                          {selected.conCeladora && (
+                            <div className="form-group">
+                              <label htmlFor="inf-celadora">Sobre la celadora</label>
+                              <textarea
+                                id="inf-celadora"
+                                className="operativo-informe"
+                                rows={2}
+                                value={choferForm.celadora}
+                                onChange={(e) =>
+                                  setChoferForm((p) => ({ ...p, celadora: e.target.value }))
+                                }
+                                placeholder="La celadora destaca en su trabajo realizando..."
+                              />
+                            </div>
+                          )}
+
+                          <div className="form-group">
+                            <label htmlFor="inf-vehiculo">Sobre el vehículo</label>
+                            <textarea
+                              id="inf-vehiculo"
+                              className="operativo-informe"
+                              rows={2}
+                              value={choferForm.vehiculo}
+                              onChange={(e) =>
+                                setChoferForm((p) => ({ ...p, vehiculo: e.target.value }))
+                              }
+                              placeholder="El vehículo no presenta fallas que notificar"
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <label htmlFor="inf-combustible">Nivel de combustible</label>
+                            <select
+                              id="inf-combustible"
+                              className="admin-inline-select"
+                              value={choferForm.combustible}
+                              onChange={(e) =>
+                                setChoferForm((p) => ({
+                                  ...p,
+                                  combustible: e.target.value as '' | NivelCombustible,
+                                }))
+                              }
+                            >
+                              <option value="">Seleccionar nivel</option>
+                              {NIVELES_COMBUSTIBLE.map((n) => (
+                                <option key={n.value} value={n.value}>
+                                  {n.label}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="panel-card__desc" style={{ marginTop: '0.35rem' }}>
+                              Misma escala para todos los vehículos (vacío → lleno), para poder
+                              comparar consumo a futuro.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn btn--primary"
+                            disabled={busy || !choferInformeListo}
+                            onClick={() => void saveInforme()}
+                          >
+                            Guardar informe y cerrar jornada
+                          </button>
+                        </>
+                      )}
+                    </section>
+                  )}
+                </>
               )}
             </>
           )}

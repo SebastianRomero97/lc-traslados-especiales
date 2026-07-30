@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { describeCaughtError } from '@/lib/api-errors';
 import { prisma } from '@/lib/prisma';
 import { requireCoordinadoraApi } from '@/lib/coordinadora-auth';
+import { isTipoItinerario } from '@/lib/grilla.utils';
 
 const grillaInclude = {
   area: { select: { id: true, nombre: true } },
@@ -31,15 +32,15 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           message:
-            'Indicá área, transporte y tipo de itinerario (INGRESO o SALIDA) para buscar la última grilla.',
+            'Indicá área, transporte y tipo de itinerario para buscar la última grilla.',
         },
         { status: 400 },
       );
     }
 
-    if (tipoItinerario !== 'INGRESO' && tipoItinerario !== 'SALIDA') {
+    if (!isTipoItinerario(tipoItinerario)) {
       return NextResponse.json(
-        { message: 'El tipo de itinerario debe ser INGRESO o SALIDA.' },
+        { message: 'El tipo de itinerario no es válido.' },
         { status: 400 },
       );
     }

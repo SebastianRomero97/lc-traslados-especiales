@@ -2,24 +2,137 @@ export type AccionParada = 'SUBE' | 'BAJA' | 'TRASBORDO';
 
 export type TipoParadaForm = 'pasajero' | 'destino' | 'trasbordo';
 
+/** Tipos de itinerario de grilla (incluye Adaptación y Especial). */
+export type TipoItinerario =
+  | 'INGRESO'
+  | 'SALIDA'
+  | 'ADAPTACION_INGRESO'
+  | 'ADAPTACION_SALIDA'
+  | 'ESPECIAL'
+  | 'ESPECIAL_INGRESO'
+  | 'ESPECIAL_SALIDA';
+
+export type ModalidadItinerario = 'NORMAL' | 'ADAPTACION' | 'ESPECIAL';
+export type SentidoItinerario = 'INGRESO' | 'SALIDA';
+
+export const TIPOS_ITINERARIO: TipoItinerario[] = [
+  'INGRESO',
+  'SALIDA',
+  'ADAPTACION_INGRESO',
+  'ADAPTACION_SALIDA',
+  'ESPECIAL',
+  'ESPECIAL_INGRESO',
+  'ESPECIAL_SALIDA',
+];
+
+export function isTipoItinerario(value: string): value is TipoItinerario {
+  return (TIPOS_ITINERARIO as string[]).includes(value);
+}
+
+/** Sentido operativo para sube/baja. ESPECIAL sin definir = Ingreso. */
+export function sentidoItinerario(tipo: TipoItinerario | string): SentidoItinerario {
+  if (
+    tipo === 'SALIDA' ||
+    tipo === 'ADAPTACION_SALIDA' ||
+    tipo === 'ESPECIAL_SALIDA'
+  ) {
+    return 'SALIDA';
+  }
+  return 'INGRESO';
+}
+
+export function isSalidaItinerario(tipo: TipoItinerario | string): boolean {
+  return sentidoItinerario(tipo) === 'SALIDA';
+}
+
+export function modalidadItinerario(tipo: TipoItinerario | string): ModalidadItinerario {
+  if (tipo.startsWith('ADAPTACION')) return 'ADAPTACION';
+  if (tipo.startsWith('ESPECIAL')) return 'ESPECIAL';
+  return 'NORMAL';
+}
+
+export function labelTipoItinerario(tipo: TipoItinerario | string): string {
+  switch (tipo) {
+    case 'INGRESO':
+      return 'Ingresos';
+    case 'SALIDA':
+      return 'Salidas';
+    case 'ADAPTACION_INGRESO':
+      return 'Adaptación — Ingreso';
+    case 'ADAPTACION_SALIDA':
+      return 'Adaptación — Salida';
+    case 'ESPECIAL':
+      return 'Especial';
+    case 'ESPECIAL_INGRESO':
+      return 'Especial — Ingreso';
+    case 'ESPECIAL_SALIDA':
+      return 'Especial — Salida';
+    default:
+      return tipo;
+  }
+}
+
+/** Combina modalidad + sentido (opcional en Especial) al enum de grilla. */
+export function buildTipoItinerario(
+  modalidad: ModalidadItinerario,
+  sentido: SentidoItinerario | '',
+): TipoItinerario {
+  if (modalidad === 'NORMAL') {
+    return sentido === 'SALIDA' ? 'SALIDA' : 'INGRESO';
+  }
+  if (modalidad === 'ADAPTACION') {
+    return sentido === 'SALIDA' ? 'ADAPTACION_SALIDA' : 'ADAPTACION_INGRESO';
+  }
+  if (sentido === 'SALIDA') return 'ESPECIAL_SALIDA';
+  if (sentido === 'INGRESO') return 'ESPECIAL_INGRESO';
+  return 'ESPECIAL';
+}
+
+export function splitTipoItinerario(tipo: TipoItinerario | string): {
+  modalidad: ModalidadItinerario;
+  sentido: SentidoItinerario | '';
+} {
+  const modalidad = modalidadItinerario(tipo);
+  if (tipo === 'ESPECIAL') return { modalidad: 'ESPECIAL', sentido: '' };
+  return { modalidad, sentido: sentidoItinerario(tipo) };
+}
+
+/** Tipos “de ingreso” para armar Salida desde asistentes. */
+export function tiposIngresoParaSalida(tipoSalida: TipoItinerario): TipoItinerario[] {
+  const modalidad = modalidadItinerario(tipoSalida);
+  if (modalidad === 'ADAPTACION') {
+    return ['ADAPTACION_INGRESO', 'INGRESO'];
+  }
+  if (modalidad === 'ESPECIAL') {
+    return ['ESPECIAL_INGRESO', 'ESPECIAL', 'INGRESO'];
+  }
+  return ['INGRESO', 'ADAPTACION_INGRESO', 'ESPECIAL_INGRESO', 'ESPECIAL'];
+}
+
 export type GrillaFilaInput = {
-  hora: string;
+  hora?: string | null;
   direccion: string;
   pasajeroNombre: string;
   pasajeroId?: string | null;
   destinoId?: string | null;
   accion: AccionParada;
   trasbordoHacia?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  usarCoordsParaChofer?: boolean | null;
 };
 
 export type GrillaFilaParaForm = {
-  hora: string;
+  hora?: string | null;
   direccion: string;
   pasajeroNombre: string;
   pasajeroId?: string | null;
   destinoId?: string | null;
   accion: AccionParada | string;
   trasbordoHacia?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  usarCoordsParaChofer?: boolean | null;
 };
 
 export function formatFechaGrilla(fecha: Date | string): string {
@@ -46,11 +159,11 @@ export function fechaGrillaKey(fecha: Date | string): string {
 }
 
 export function buildGrillaTitulo(params: {
-  tipoItinerario: 'INGRESO' | 'SALIDA';
+  tipoItinerario: TipoItinerario | string;
   transporteNombre: string;
   fecha: Date | string;
 }): string {
-  const tipo = params.tipoItinerario === 'INGRESO' ? 'INGRESOS' : 'SALIDAS';
+  const tipo = labelTipoItinerario(params.tipoItinerario).toUpperCase();
   return `ITINERARIO: ${tipo} "${params.transporteNombre.toUpperCase()}" — ${formatFechaGrilla(params.fecha)}`;
 }
 
@@ -78,15 +191,16 @@ export function normalizeAccion(accion: string): AccionParada {
 /** Acción esperada según tipo de parada e itinerario (Ingresos vs Salidas). */
 export function accionPorTipoParada(
   tipoParada: TipoParadaForm,
-  tipoItinerario: 'INGRESO' | 'SALIDA',
+  tipoItinerario: TipoItinerario | SentidoItinerario | string,
 ): AccionParada {
   if (tipoParada === 'trasbordo') return 'TRASBORDO';
+  const sentido = sentidoItinerario(tipoItinerario);
   // Ingresos: suben en domicilio, bajan en destino.
   // Salidas: suben en destino, bajan en domicilio.
   if (tipoParada === 'destino') {
-    return tipoItinerario === 'INGRESO' ? 'BAJA' : 'SUBE';
+    return sentido === 'INGRESO' ? 'BAJA' : 'SUBE';
   }
-  return tipoItinerario === 'INGRESO' ? 'SUBE' : 'BAJA';
+  return sentido === 'INGRESO' ? 'SUBE' : 'BAJA';
 }
 
 export function invertirAccionSubeBaja(accion: AccionParada): AccionParada {
@@ -129,6 +243,9 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
   destinoId: string;
   accion: AccionParada;
   trasbordoHacia: string;
+  lat: number | null;
+  lon: number | null;
+  usarCoordsParaChofer: boolean;
 } {
   const accion = normalizeAccion(fila.accion);
   const tipoParada = inferTipoParada(fila);
@@ -141,6 +258,9 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
     destinoId: fila.destinoId ?? '',
     accion,
     trasbordoHacia: fila.trasbordoHacia ?? '',
+    lat: fila.lat ?? null,
+    lon: fila.lon ?? null,
+    usarCoordsParaChofer: Boolean(fila.usarCoordsParaChofer),
   };
 }
 
@@ -152,7 +272,7 @@ export function buildGrillaWhatsAppText(params: {
   conCeladora: boolean;
   nota?: string | null;
   filas: {
-    hora: string;
+    hora?: string | null;
     direccion: string;
     pasajeroNombre: string;
     accion: string;
@@ -171,7 +291,7 @@ export function buildGrillaWhatsAppText(params: {
     '',
     ...params.filas.map(
       (f) =>
-        `${f.hora} | ${f.direccion} | ${formatAccionFila({
+        `${f.hora?.trim() || '—'} | ${f.direccion} | ${formatAccionFila({
           accion: f.accion,
           pasajeroNombre: f.pasajeroNombre,
           trasbordoHacia: f.trasbordoHacia,

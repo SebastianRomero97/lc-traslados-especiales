@@ -11,7 +11,7 @@ export const ROLE_PANEL_PATH: Record<Role, string> = {
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: 'Admin',
-  COORDINADORA: 'Coordinadora',
+  COORDINADORA: 'Administración',
   CELADORA: 'Celadora',
   CHOFER: 'Chofer',
 };
@@ -45,7 +45,7 @@ export function panelPathsFor(user: { roles: Role[] }): { role: Role; path: stri
   }));
 }
 
-/** Paneles a los que el usuario puede navegar (Admin también puede ir a Coordinadora). */
+/** Paneles a los que el usuario puede navegar (Admin también puede ir a Administración). */
 export function accessiblePanelsFor(user: {
   roles: Role[];
 }): { role: Role; path: string; label: string }[] {
@@ -75,7 +75,7 @@ export function isValidAssignableRoles(roles: unknown): roles is Role[] {
 
 /**
  * Orden visual del listado Admin:
- * Admin → Coordinadora (solo) → roles múltiples → Celadora → Chofer
+ * Admin → Administración (solo) → roles múltiples → Celadora → Chofer
  */
 export function userListGroupRank(roles: Role[]): number {
   if (roles.includes('ADMIN')) return 0;

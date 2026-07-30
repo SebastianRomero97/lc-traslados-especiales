@@ -5,6 +5,11 @@ import { describeCaughtError } from '@/lib/api-errors';
 import {
   accionPorTipoParada,
   buildDetalleDestino,
+  isSalidaItinerario,
+  isTipoItinerario,
+  modalidadItinerario,
+  tiposIngresoParaSalida,
+  type TipoItinerario,
 } from '@/lib/grilla.utils';
 
 /**
@@ -22,6 +27,7 @@ export async function GET(request: Request) {
     const fecha = searchParams.get('fecha')?.trim();
     const transporteId = searchParams.get('transporteId')?.trim() || undefined;
     const grillaIngresoId = searchParams.get('grillaIngresoId')?.trim() || undefined;
+    const targetTipoRaw = searchParams.get('targetTipo')?.trim() || 'SALIDA';
 
     if (!areaId || !fecha) {
       return NextResponse.json(
@@ -29,6 +35,15 @@ export async function GET(request: Request) {
         { status: 400 },
       );
     }
+
+    if (!isTipoItinerario(targetTipoRaw) || !isSalidaItinerario(targetTipoRaw)) {
+      return NextResponse.json(
+        { message: 'targetTipo debe ser un itinerario de Salida (normal, adaptación o especial).' },
+        { status: 400 },
+      );
+    }
+    const targetTipo: TipoItinerario = targetTipoRaw;
+    const tiposIngreso = tiposIngresoParaSalida(targetTipo);
 
     const fechaDate = new Date(`${fecha}T00:00:00.000Z`);
     if (Number.isNaN(fechaDate.getTime())) {
@@ -40,14 +55,14 @@ export async function GET(request: Request) {
           where: {
             id: grillaIngresoId,
             areaId,
-            tipoItinerario: 'INGRESO',
+            tipoItinerario: { in: tiposIngreso },
           },
           include: grillaIngresoInclude,
         })
       : await prisma.grilla.findFirst({
           where: {
             areaId,
-            tipoItinerario: 'INGRESO',
+            tipoItinerario: { in: tiposIngreso },
             fecha: fechaDate,
             ...(transporteId ? { transporteId } : {}),
           },
@@ -81,9 +96,12 @@ export async function GET(request: Request) {
       where: { areaId },
       select: {
         pasajeroId: true,
-        destinoId: true,
         pasajero: { select: { id: true, nombre: true, direccion: true } },
-        destino: { select: { id: true, nombre: true, domicilio: true, active: true } },
+        destinos: {
+          include: {
+            destino: { select: { id: true, nombre: true, domicilio: true, active: true } },
+          },
+        },
       },
     });
     const asignacionByPasajeroId = new Map(
@@ -110,7 +128,7 @@ export async function GET(request: Request) {
         ? asignacionByPasajeroId.get(a.pasajeroId)
         : undefined;
       const destino =
-        asignacion?.destino?.active !== false ? asignacion?.destino ?? null : null;
+        asignacion?.destinos.find((d) => d.destino.active)?.destino ?? null;
 
       return {
         pasajeroId: a.pasajeroId,
@@ -127,8 +145,8 @@ export async function GET(request: Request) {
       };
     });
 
-    const accionDestino = accionPorTipoParada('destino', 'SALIDA');
-    const accionPasajero = accionPorTipoParada('pasajero', 'SALIDA');
+    const accionDestino = accionPorTipoParada('destino', targetTipo);
+    const accionPasajero = accionPorTipoParada('pasajero', targetTipo);
 
     const destinosOrden: {
       id: string;
@@ -208,7 +226,7 @@ export async function GET(request: Request) {
         },
         asistentesCount: asistentes.length,
         sugerido: {
-          tipoItinerario: 'SALIDA' as const,
+          tipoItinerario: targetTipo,
           fecha,
           nota: ingreso.nota,
           conCeladora: ingreso.conCeladora,
@@ -218,7 +236,7 @@ export async function GET(request: Request) {
           filas,
         },
       },
-      message: `Salidas armada con ${asistentes.length} asistente(s) del Ingreso. Revisá transporte/celadora y horarios.`,
+      message: `Salida (${modalidadItinerario(targetTipo) === 'NORMAL' ? 'habitual' : modalidadItinerario(targetTipo) === 'ADAPTACION' ? 'adaptación' : 'especial'}) armada con ${asistentes.length} asistente(s) del Ingreso. Revisá transporte/celadora y horarios.`,
     });
   } catch (error) {
     console.error('[API /coord/grillas/desde-ingreso GET]', error);

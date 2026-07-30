@@ -1,6 +1,6 @@
 'use client';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
+import { useCallback, useEffect, useState } from 'react';
+import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 /** Colores estables por destino (asignación visual pasajero ↔ destino). */
 const DESTINO_PALETTE = [
@@ -49,8 +49,8 @@ type AreaDetail = {
   }[];
   pasajeros: {
     pasajero: OptionPasajero & { active: boolean };
-    destinoId: string | null;
-    destino: { id: string; nombre: string; domicilio: string; active: boolean } | null;
+    destinoIds: string[];
+    destinos: { id: string; nombre: string; domicilio: string; active: boolean }[];
   }[];
 };
 export function CoordinadoraDashboard() {
@@ -64,8 +64,6 @@ export function CoordinadoraDashboard() {
     pasajeros: OptionPasajero[];
   }>({ celadoras: [], transportes: [], pasajeros: [] });
   const [loading, setLoading] = useState(true);
-  const [newAreaName, setNewAreaName] = useState('');
-  const [destinoForm, setDestinoForm] = useState({ nombre: '', domicilio: '' });
   const [pickCeladora, setPickCeladora] = useState('');
   const [pickTransporte, setPickTransporte] = useState('');
   const [pickPasajero, setPickPasajero] = useState('');
@@ -122,74 +120,6 @@ export function CoordinadoraDashboard() {
     await loadAreas();
     if (selectedAreaId) await loadDetail(selectedAreaId);
   };
-  const createArea = async (event: FormEvent) => {
-    event.preventDefault();
-    const missing = missingFieldsMessage(
-      { nombre: newAreaName },
-      { nombre: 'nombre del área' },
-    );
-    if (missing) {
-      popup.error(missing);
-      return;
-    }
-    const response = await fetch('/api/coord/areas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: newAreaName }),
-    });
-    if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo crear el área.'));
-      return;
-    }
-    const body = (await response.json()) as { message?: string; data?: { id: string } };
-    setNewAreaName('');
-    popup.success(body.message ?? 'Área creada.');
-    await loadAreas();
-    if (body.data?.id) setSelectedAreaId(body.data.id);
-  };
-  const createDestino = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!selectedAreaId) {
-      popup.error('Seleccioná un área primero.');
-      return;
-    }
-    const missing = missingFieldsMessage(
-      { nombre: destinoForm.nombre, domicilio: destinoForm.domicilio },
-      { nombre: 'nombre del destino', domicilio: 'domicilio' },
-    );
-    if (missing) {
-      popup.error(missing);
-      return;
-    }
-    const response = await fetch('/api/coord/destinos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ areaId: selectedAreaId, ...destinoForm }),
-    });
-    if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo crear el destino.'));
-      return;
-    }
-    const body = (await response.json()) as { message?: string };
-    setDestinoForm({ nombre: '', domicilio: '' });
-    popup.success(body.message ?? 'Destino creado.');
-    await refresh();
-  };
-  const deleteDestino = async (id: string, nombre: string) => {
-    const ok = await popup.confirm({
-      message: `¿Eliminar destino "${nombre}"?`,
-      confirmLabel: 'Eliminar',
-    });
-    if (!ok) return;
-    const response = await fetch(`/api/coord/destinos/${id}`, { method: 'DELETE' });
-    if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo eliminar el destino.'));
-      return;
-    }
-    const body = (await response.json()) as { message?: string };
-    popup.success(body.message ?? 'Destino eliminado.');
-    await refresh();
-  };
   const assign = async (payload: Record<string, string | null>) => {
     if (!selectedAreaId) {
       popup.error('Seleccioná un área primero.');
@@ -219,18 +149,16 @@ export function CoordinadoraDashboard() {
     destinosAsignables.map((d, index) => [d.id, DESTINO_PALETTE[index % DESTINO_PALETTE.length]]),
   );
   const countPasajerosPorDestino = (destinoId: string) =>
-    detail?.pasajeros.filter((p) => p.destinoId === destinoId).length ?? 0;
-  const togglePasajeroDestino = (pasajeroId: string, currentDestinoId: string | null) => {
+    detail?.pasajeros.filter((p) => p.destinoIds.includes(destinoId)).length ?? 0;
+  const togglePasajeroDestino = (pasajeroId: string) => {
     if (!selectedDestinoId) {
       popup.error('Primero seleccioná un destino a la derecha.');
       return;
     }
-    const nextDestinoId =
-      currentDestinoId === selectedDestinoId ? null : selectedDestinoId;
     void assign({
       action: 'set_pasajero_destino',
       pasajeroId,
-      destinoId: nextDestinoId,
+      destinoId: selectedDestinoId,
     });
   };
   const unavailableCeladoras =
@@ -259,23 +187,13 @@ export function CoordinadoraDashboard() {
     <div className="coord-dashboard">
       {popup.popupNode}
       <section className="panel-card">
-        <h2>Áreas</h2>
-        <form className="admin-grid-form admin-grid-form--2" onSubmit={createArea}>
-          <div className="form-group">
-            <label htmlFor="area-nombre">Nueva área</label>
-            <input
-              id="area-nombre"
-              value={newAreaName}
-              onChange={(e) => setNewAreaName(e.target.value)}
-              placeholder="Nombre del área"
-              required
-            />
-          </div>
-          <button type="submit" className="btn btn--primary">
-            Crear área
-          </button>
-        </form>
+        <h2>Elegí el área</h2>
+        <p className="panel-card__desc">
+          Las áreas y destinos los carga Admin. Acá seleccionás el área para asignar recursos y
+          armar grillas.
+        </p>
       </section>
+
       <div className="admin-tabs-shell">
         <div className="admin-tabs" role="tablist" aria-label="Áreas">
           {areas.map((area) => (
@@ -295,40 +213,18 @@ export function CoordinadoraDashboard() {
           {!detail ? (
             <p className="panel-card__desc" style={{ margin: 0 }}>
               {areas.length === 0
-                ? 'Creá un área para empezar.'
+                ? 'Todavía no hay áreas. Pedile a Admin que las cree.'
                 : 'Seleccioná un área para ver destinos y asignaciones.'}
             </p>
           ) : (
             <div className="coord-area-detail">
           <section className="panel-card panel-card--nested">
             <h2>Destinos — {detail.nombre}</h2>
-            <p className="panel-card__desc">Nombre y domicilio del lugar de destino.</p>
-            <form className="admin-grid-form admin-grid-form--2" onSubmit={createDestino}>
-              <div className="form-group">
-                <label htmlFor="dest-nombre">Nombre</label>
-                <input
-                  id="dest-nombre"
-                  value={destinoForm.nombre}
-                  onChange={(e) => setDestinoForm((p) => ({ ...p, nombre: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="dest-dom">Domicilio</label>
-                <input
-                  id="dest-dom"
-                  value={destinoForm.domicilio}
-                  onChange={(e) => setDestinoForm((p) => ({ ...p, domicilio: e.target.value }))}
-                  placeholder="Calle, número, localidad"
-                  required
-                />
-              </div>
-              <button type="submit" className="btn btn--primary">
-                Agregar destino
-              </button>
-            </form>
+            <p className="panel-card__desc">
+              Solo lectura. Los destinos los gestiona Admin.
+            </p>
             {detail.destinos.length === 0 ? (
-              <p className="panel-card__desc">Sin destinos todavía.</p>
+              <p className="panel-card__desc">Sin destinos todavía. Pedile a Admin que los cargue.</p>
             ) : (
               <div className="admin-users__table-wrap">
                 <table className="admin-users__table">
@@ -336,7 +232,6 @@ export function CoordinadoraDashboard() {
                     <tr>
                       <th>Nombre</th>
                       <th>Domicilio</th>
-                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -344,15 +239,6 @@ export function CoordinadoraDashboard() {
                       <tr key={destino.id}>
                         <td>{destino.nombre}</td>
                         <td>{destino.domicilio}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn--danger btn--sm"
-                            onClick={() => void deleteDestino(destino.id, destino.nombre)}
-                          >
-                            Eliminar
-                          </button>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -674,19 +560,25 @@ export function CoordinadoraDashboard() {
                     {detail.pasajeros.length === 0 ? (
                       <li className="coord-assign-empty">Sin pasajeros en el área.</li>
                     ) : (
-                      detail.pasajeros.map(({ pasajero, destinoId }) => {
-                        const color = destinoId ? destinoColorById.get(destinoId) : undefined;
+                      detail.pasajeros.map(({ pasajero, destinoIds, destinos }) => {
                         const isLinkedToSelected =
-                          !!selectedDestinoId && destinoId === selectedDestinoId;
+                          !!selectedDestinoId && destinoIds.includes(selectedDestinoId);
+                        const primaryColor = destinoIds
+                          .map((id) => destinoColorById.get(id))
+                          .find(Boolean);
+                        const destinosLabel =
+                          destinos.length > 0
+                            ? destinos.map((d) => d.nombre).join(' · ')
+                            : 'Sin destino';
                         return (
                           <li key={pasajero.id}>
                             <div
-                              className={`coord-pasajero-chip${pasajero.active ? '' : ' is-unavailable'}${isLinkedToSelected ? ' is-linked' : ''}${!destinoId ? ' is-unassigned' : ''}`}
+                              className={`coord-pasajero-chip${pasajero.active ? '' : ' is-unavailable'}${isLinkedToSelected ? ' is-linked' : ''}${destinoIds.length === 0 ? ' is-unassigned' : ''}`}
                               style={
-                                color
+                                primaryColor
                                   ? {
-                                      backgroundColor: `${color}22`,
-                                      borderColor: color,
+                                      backgroundColor: `${primaryColor}22`,
+                                      borderColor: primaryColor,
                                     }
                                   : undefined
                               }
@@ -695,19 +587,27 @@ export function CoordinadoraDashboard() {
                                 type="button"
                                 className="coord-pasajero-chip__main"
                                 disabled={!pasajero.active}
-                                onClick={() => togglePasajeroDestino(pasajero.id, destinoId)}
+                                onClick={() => togglePasajeroDestino(pasajero.id)}
                               >
-                                <span
-                                  className="coord-pasajero-chip__swatch"
-                                  style={color ? { background: color } : undefined}
-                                />
+                                <span className="coord-pasajero-chip__swatches">
+                                  {destinoIds.length === 0 ? (
+                                    <span className="coord-pasajero-chip__swatch" />
+                                  ) : (
+                                    destinoIds.map((id) => (
+                                      <span
+                                        key={id}
+                                        className="coord-pasajero-chip__swatch"
+                                        style={{
+                                          background: destinoColorById.get(id) ?? '#cbd5e1',
+                                        }}
+                                      />
+                                    ))
+                                  )}
+                                </span>
                                 <span className="coord-pasajero-chip__text">
                                   <strong>{pasajero.nombre}</strong>
                                   <small>
-                                    {destinoId
-                                      ? destinosAsignables.find((d) => d.id === destinoId)?.nombre ??
-                                        'Destino'
-                                      : 'Sin destino'}
+                                    {destinosLabel}
                                     {!pasajero.active ? ' · No disponible' : ''}
                                   </small>
                                 </span>

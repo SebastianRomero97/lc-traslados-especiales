@@ -18,7 +18,7 @@ export function CoordinadoraPanelTabs() {
       <PublicacionesBanner />
 
       <div className="admin-tabs-shell">
-        <div className="admin-tabs" role="tablist" aria-label="Secciones coordinadora">
+        <div className="admin-tabs" role="tablist" aria-label="Secciones administración">
           <button
             type="button"
             role="tab"
@@ -26,7 +26,7 @@ export function CoordinadoraPanelTabs() {
             aria-selected={tab === 'areas'}
             onClick={() => setTab('areas')}
           >
-            Áreas y asignaciones
+            Área y asignaciones
           </button>
           <button
             type="button"

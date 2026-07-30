@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAdminApi } from '@/lib/admin-auth';
 import { requireCoordinadoraApi } from '@/lib/coordinadora-auth';
 import { describeCaughtError } from '@/lib/api-errors';
 
@@ -37,7 +38,11 @@ export async function GET(_request: Request, { params }: Params) {
       pasajeros: {
         include: {
           pasajero: true,
-          destino: { select: { id: true, nombre: true, domicilio: true, active: true } },
+          destinos: {
+            include: {
+              destino: { select: { id: true, nombre: true, domicilio: true, active: true } },
+            },
+          },
         },
       },
     },
@@ -46,6 +51,15 @@ export async function GET(_request: Request, { params }: Params) {
   if (!area) {
     return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
   }
+
+  const areaPayload = {
+    ...area,
+    pasajeros: area.pasajeros.map((p) => ({
+      pasajero: p.pasajero,
+      destinoIds: p.destinos.map((d) => d.destinoId),
+      destinos: p.destinos.map((d) => d.destino).filter((d) => d.active),
+    })),
+  };
 
   const [celadorasDisponibles, transportesDisponibles, pasajerosDisponibles] = await Promise.all([
     prisma.user.findMany({
@@ -67,7 +81,7 @@ export async function GET(_request: Request, { params }: Params) {
 
   return NextResponse.json({
     data: {
-      area,
+      area: areaPayload,
       options: {
         celadoras: celadorasDisponibles,
         transportes: transportesDisponibles,
@@ -78,7 +92,7 @@ export async function GET(_request: Request, { params }: Params) {
 }
 
 export async function PATCH(request: Request, { params }: Params) {
-  const auth = await requireCoordinadoraApi();
+  const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
 
   const { id } = await params;
@@ -103,7 +117,7 @@ export async function PATCH(request: Request, { params }: Params) {
 }
 
 export async function DELETE(_request: Request, { params }: Params) {
-  const auth = await requireCoordinadoraApi();
+  const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
 
   const { id } = await params;

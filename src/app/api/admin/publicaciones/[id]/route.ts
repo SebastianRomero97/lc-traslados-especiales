@@ -72,7 +72,7 @@ export async function PATCH(request: Request, { params }: Params) {
         return NextResponse.json(
           {
             message:
-              'Seleccioná al menos un destinatario (coordinadoras, celadoras o choferes).',
+              'Seleccioná al menos un destinatario (Administración, celadoras o choferes).',
           },
           { status: 400 },
         );

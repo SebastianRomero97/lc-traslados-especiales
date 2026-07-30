@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { formatFechaGrilla, todayFechaInput } from '@/lib/grilla.utils';
+import { formatFechaGrilla, labelTipoItinerario, todayFechaInput } from '@/lib/grilla.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type Opcion = { id: string; nombre: string; tipo?: string };
@@ -249,7 +249,7 @@ export function RespaldoHistorialPanel() {
                     {grillas.map((g) => (
                       <tr key={g.id}>
                         <td>{formatFechaGrilla(g.fecha)}</td>
-                        <td>{g.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'}</td>
+                        <td>{labelTipoItinerario(g.tipoItinerario)}</td>
                         <td>{g.area}</td>
                         <td>
                           {g.transporte}

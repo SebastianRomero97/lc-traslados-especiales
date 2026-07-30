@@ -3,7 +3,7 @@ import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 
-/** Alta de destinos: solo Admin (usar /api/admin/destinos). */
+/** Alta de destinos (solo Admin). */
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: destino, message: 'Destino creado.' }, { status: 201 });
   } catch (error) {
-    console.error('[API /coord/destinos POST]', error);
+    console.error('[API /admin/destinos POST]', error);
     return NextResponse.json(
       { message: describeCaughtError(error, 'No pudimos crear el destino.') },
       { status: 500 },

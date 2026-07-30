@@ -1,7 +1,7 @@
 # Plan — Sistema interno LC Traslados Especiales
 
-Documento de requisitos acordados. **Estado:** Fases 1–8 + multi-rol.  
-Última actualización: 26 jul 2026 (paneles Celadora / Chofer).
+Documento de requisitos acordados. **Estado:** Fases 1–8 + multi-rol · rediseño Administración en curso (Etapa 5).  
+Última actualización: 29 jul 2026.
 
 ---
 
@@ -23,9 +23,44 @@ Se necesita un **backend** para soportar usuarios, roles, áreas, grillas, etc.
 
 ## Jerarquía de roles
 
-1. **Admin** (arriba de todos)
-2. **Coordinadora**
+1. **Admin** (arriba de todos) — catálogos: usuarios, áreas, destinos, transportes, pasajeros, choferes
+2. **Administración** (antes Coordinadora; enum interno `COORDINADORA`) — asignaciones y grillas por área
 3. **Celadora** / **Chofer** (operativos; ambos con panel)
+
+---
+
+## Rediseño Administración + Maps (en curso)
+
+### Etapa 1 (lista)
+- Renombre visible Coordinadora → Administración (ruta `/panel/coordinadora` se mantiene).
+- Áreas y destinos: solo Admin crea/edita/elimina.
+- Administración elige área y asigna recursos.
+
+### Etapa 2 (lista)
+- Grilla con **nombre** (crear / listar / borrar).
+- Pasajero con **varios destinos**.
+- **Punto de encuentro** de celadora (crear + guardar frecuente por celadora).
+
+### Etapa 3 (lista)
+- Tablero drag-and-drop: Recursos (izq) ↔ grilla (der).
+- Encabezado: 1 vehículo, 1 chofer, 1 celadora (opcional) + punto de encuentro.
+- Paradas por arrastre de pasajeros/destinos (sin “Crear fila”).
+- Itinerarios: Ingresos, Salidas, Adaptación, Especial.
+
+### Etapa 4 (lista)
+- Paneles Celadora / Chofer: nombre de grilla + punto de encuentro visibles.
+- Compatibilidad con asistencias, reloj e informe (sin Maps).
+
+### Etapa 5 (en implementación)
+- Mapa bajo la grilla con **OpenStreetMap + OSRM** (gratis, sin cuenta de pago).
+- Geocode automático + **coordenadas** guardadas (dirección de texto intacta para el chofer).
+- Pins arrastrables / “Ubicar en mapa”; sugerencia de aplicar el pin también a Maps/Waze.
+- Optimizar recorrido / Descartar optimización.
+- Google Maps Platform queda como opción futura si el dueño prefiere pagar el servicio.
+- Pendiente: sugerencias de horario hacia atrás desde destinos fijos.
+
+### Etapas siguientes
+- (refinar) horarios sugeridos hacia atrás desde destinos fijos; retorno a base opcional.
 
 ---
 

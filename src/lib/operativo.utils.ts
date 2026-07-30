@@ -58,12 +58,45 @@ export function composeInformeChofer(params: {
   return parts.join('\n');
 }
 
-export function mapsUrl(direccion: string): string {
+export function mapsUrl(
+  direccion: string,
+  coords?: { lat: number; lon: number } | null,
+): string {
+  if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+    return `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lon}`;
+  }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
 }
 
-export function wazeUrl(direccion: string): string {
+export function wazeUrl(
+  direccion: string,
+  coords?: { lat: number; lon: number } | null,
+): string {
+  if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+    return `https://waze.com/ul?ll=${coords.lat}%2C${coords.lon}&navigate=yes`;
+  }
   return `https://waze.com/ul?q=${encodeURIComponent(direccion)}&navigate=yes`;
+}
+
+/** URL según flag: coords solo si Administración las aplicó para el chofer. */
+export function navUrlsParaChofer(params: {
+  direccion: string;
+  lat?: number | null;
+  lon?: number | null;
+  usarCoordsParaChofer?: boolean | null;
+}): { maps: string; waze: string } {
+  const coords =
+    params.usarCoordsParaChofer &&
+    params.lat != null &&
+    params.lon != null &&
+    Number.isFinite(params.lat) &&
+    Number.isFinite(params.lon)
+      ? { lat: params.lat, lon: params.lon }
+      : null;
+  return {
+    maps: mapsUrl(params.direccion, coords),
+    waze: wazeUrl(params.direccion, coords),
+  };
 }
 
 export type ItemControlOperativo = {

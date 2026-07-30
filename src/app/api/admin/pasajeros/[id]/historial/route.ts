@@ -133,7 +133,7 @@ export async function GET(_request: Request, { params }: Params) {
         responsables: string;
         filas: {
           id: string;
-          hora: string;
+          hora: string | null;
           direccion: string;
           pasajeroNombre: string;
           pasajeroId: string | null;

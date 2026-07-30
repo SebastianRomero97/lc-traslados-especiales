@@ -20,6 +20,12 @@ enum Role {
 enum TipoItinerario {
   INGRESO
   SALIDA
+  ADAPTACION_INGRESO
+  ADAPTACION_SALIDA
+  /// Especial sin sentido definido: opera como Ingreso hasta que elijan.
+  ESPECIAL
+  ESPECIAL_INGRESO
+  ESPECIAL_SALIDA
 }
 
 enum AccionParada {
@@ -59,6 +65,7 @@ model User {
 
   areasComoCeladora       AreaCeladora[]
   transportesComoCeladora TransporteCeladora[]
+  puntosEncuentro         PuntoEncuentro[]
 
   grillasComoChofer   Grilla[] @relation("GrillaChofer")
   grillasComoCeladora Grilla[] @relation("GrillaCeladora")
@@ -88,6 +95,11 @@ model Pasajero {
   id        String   @id @default(cuid())
   nombre    String
   direccion String
+  /// Ubicación para el mapa interno (no reemplaza el texto de dirección).
+  lat       Float?
+  lon       Float?
+  /// Si true, Maps/Waze del chofer usan lat/lon en lugar del texto.
+  usarCoordsParaChofer Boolean @default(false)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -115,14 +127,18 @@ model Destino {
   id        String   @id @default(cuid())
   nombre    String
   domicilio String
+  lat       Float?
+  lon       Float?
+  usarCoordsParaChofer Boolean @default(false)
   active    Boolean  @default(true)
   areaId    String
   area      Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  filas         GrillaFila[]
-  areaPasajeros AreaPasajero[]
+  filas            GrillaFila[]
+  pasajeroDestinos AreaPasajeroDestino[]
+  areaPasajerosLegacy AreaPasajero[] @relation("AreaPasajeroDestinoLegacy")
 
   @@index([areaId])
 }
@@ -148,14 +164,47 @@ model AreaTransporte {
 model AreaPasajero {
   areaId     String
   pasajeroId String
-  /// Destino habitual del pasajero en esta área (quién baja/sube ahí).
+  /// Legacy (ya migrado a AreaPasajeroDestino). No usar en código nuevo.
   destinoId  String?
   area       Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
   pasajero   Pasajero @relation(fields: [pasajeroId], references: [id], onDelete: Cascade)
-  destino    Destino? @relation(fields: [destinoId], references: [id], onDelete: SetNull)
+  destino    Destino? @relation("AreaPasajeroDestinoLegacy", fields: [destinoId], references: [id], onDelete: SetNull)
+  destinos   AreaPasajeroDestino[]
 
   @@id([areaId, pasajeroId])
   @@index([destinoId])
+}
+
+/// Un pasajero puede tener varios destinos habituales en el área.
+model AreaPasajeroDestino {
+  areaId     String
+  pasajeroId String
+  destinoId  String
+  areaPasajero AreaPasajero @relation(fields: [areaId, pasajeroId], references: [areaId, pasajeroId], onDelete: Cascade)
+  destino      Destino      @relation(fields: [destinoId], references: [id], onDelete: Cascade)
+
+  @@id([areaId, pasajeroId, destinoId])
+  @@index([destinoId])
+}
+
+/// Punto de encuentro de una celadora (puede guardarse como frecuente).
+model PuntoEncuentro {
+  id         String   @id @default(cuid())
+  nombre     String?
+  direccion  String
+  lat        Float?
+  lon        Float?
+  usarCoordsParaChofer Boolean @default(false)
+  celadoraId String
+  celadora   User     @relation(fields: [celadoraId], references: [id], onDelete: Cascade)
+  /// Si true, queda disponible para reutilizar en otras grillas.
+  frecuente  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  grillas Grilla[]
+
+  @@index([celadoraId])
 }
 
 model TransporteCeladora {
@@ -170,6 +219,8 @@ model TransporteCeladora {
 /// Hoja de ruta / itinerario diario
 model Grilla {
   id             String         @id @default(cuid())
+  /// Nombre editable de la grilla (crear / editar / borrar).
+  nombre         String         @default("Sin nombre")
   tipoItinerario TipoItinerario
   fecha          DateTime       @db.Date
   nota           String?
@@ -186,6 +237,10 @@ model Grilla {
 
   celadoraId String?
   celadora   User?   @relation("GrillaCeladora", fields: [celadoraId], references: [id], onDelete: SetNull)
+
+  /// Punto de encuentro de la celadora (si no parte desde la base con el chofer).
+  puntoEncuentroId String?
+  puntoEncuentro   PuntoEncuentro? @relation(fields: [puntoEncuentroId], references: [id], onDelete: SetNull)
 
   createdById String
   createdBy   User   @relation("GrillaCreador", fields: [createdById], references: [id], onDelete: Restrict)
@@ -222,8 +277,13 @@ model GrillaFila {
   grillaId       String
   grilla         Grilla      @relation(fields: [grillaId], references: [id], onDelete: Cascade)
   orden          Int
-  hora           String
+  /// Opcional en pasajeros (Maps puede sugerirlo); fijo en destinos.
+  hora           String?
   direccion      String
+  /// Snapshot de ubicación para mapa / Maps-Waze de esta grilla.
+  lat            Float?
+  lon            Float?
+  usarCoordsParaChofer Boolean @default(false)
   pasajeroNombre String
   pasajeroId     String?
   pasajero       Pasajero?   @relation(fields: [pasajeroId], references: [id], onDelete: SetNull)

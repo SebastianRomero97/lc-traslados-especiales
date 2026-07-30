@@ -20,7 +20,7 @@ type Publicacion = {
 };
 
 const DESTINATARIO_OPTIONS: { id: Destinatario; label: string }[] = [
-  { id: 'COORDINADORA', label: 'Coordinadoras' },
+  { id: 'COORDINADORA', label: 'Administración' },
   { id: 'CELADORA', label: 'Celadoras' },
   { id: 'CHOFER', label: 'Choferes' },
 ];

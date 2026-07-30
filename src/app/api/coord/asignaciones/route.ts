@@ -139,27 +139,42 @@ export async function POST(request: Request) {
             ? body.destinoId.trim()
             : null;
 
-        if (destinoId) {
-          const destino = await prisma.destino.findFirst({
-            where: { id: destinoId, areaId, active: true },
-          });
-          if (!destino) {
-            return NextResponse.json(
-              { message: 'El destino no pertenece a esta área.' },
-              { status: 400 },
-            );
-          }
+        if (!destinoId) {
+          return NextResponse.json(
+            { message: 'Indicá el destino a asignar o quitar.' },
+            { status: 400 },
+          );
         }
 
-        await prisma.areaPasajero.update({
-          where: { areaId_pasajeroId: { areaId, pasajeroId } },
-          data: { destinoId },
+        const destino = await prisma.destino.findFirst({
+          where: { id: destinoId, areaId, active: true },
         });
-        return NextResponse.json({
-          message: destinoId
-            ? 'Destino asignado al pasajero.'
-            : 'Destino quitado del pasajero.',
+        if (!destino) {
+          return NextResponse.json(
+            { message: 'El destino no pertenece a esta área.' },
+            { status: 400 },
+          );
+        }
+
+        const existing = await prisma.areaPasajeroDestino.findUnique({
+          where: {
+            areaId_pasajeroId_destinoId: { areaId, pasajeroId, destinoId },
+          },
         });
+
+        if (existing) {
+          await prisma.areaPasajeroDestino.delete({
+            where: {
+              areaId_pasajeroId_destinoId: { areaId, pasajeroId, destinoId },
+            },
+          });
+          return NextResponse.json({ message: 'Destino quitado del pasajero.' });
+        }
+
+        await prisma.areaPasajeroDestino.create({
+          data: { areaId, pasajeroId, destinoId },
+        });
+        return NextResponse.json({ message: 'Destino asignado al pasajero.' });
       }
 
       case 'set_transporte_celadora': {

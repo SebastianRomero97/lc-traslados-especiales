@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
-import { requireCoordinadoraApi } from '@/lib/coordinadora-auth';
 import { describeCaughtError } from '@/lib/api-errors';
 
+/** Listado y alta de áreas (solo Admin). */
 export async function GET() {
-  const auth = await requireCoordinadoraApi();
+  const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
 
   const areas = await prisma.area.findMany({
     orderBy: { nombre: 'asc' },
     include: {
+      destinos: { orderBy: { nombre: 'asc' } },
       _count: {
         select: {
           destinos: true,
@@ -25,7 +26,6 @@ export async function GET() {
   return NextResponse.json({ data: areas });
 }
 
-/** Alta de áreas: solo Admin (usar /api/admin/areas). */
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
@@ -49,7 +49,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: area, message: 'Área creada.' }, { status: 201 });
   } catch (error) {
-    console.error('[API /coord/areas POST]', error);
-    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos crear el área.') }, { status: 500 });
+    console.error('[API /admin/areas POST]', error);
+    return NextResponse.json(
+      { message: describeCaughtError(error, 'No pudimos crear el área.') },
+      { status: 500 },
+    );
   }
 }

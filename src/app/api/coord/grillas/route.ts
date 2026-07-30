@@ -2,13 +2,25 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCoordinadoraApi } from '@/lib/coordinadora-auth';
 import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
-import { buildGrillaTitulo, normalizeAccion, type GrillaFilaInput } from '@/lib/grilla.utils';
+import { buildGrillaTitulo, isTipoItinerario, normalizeAccion, type GrillaFilaInput } from '@/lib/grilla.utils';
+import { filaCoordsData, syncCoordsToSources } from '@/lib/coords-sync';
 
 const grillaInclude = {
   area: { select: { id: true, nombre: true } },
   transporte: { select: { id: true, nombre: true, tipo: true } },
   chofer: { select: { id: true, username: true } },
   celadora: { select: { id: true, username: true } },
+  puntoEncuentro: {
+    select: {
+      id: true,
+      nombre: true,
+      direccion: true,
+      frecuente: true,
+      lat: true,
+      lon: true,
+      usarCoordsParaChofer: true,
+    },
+  },
   filas: {
     orderBy: { orden: 'asc' as const },
     include: {
@@ -52,7 +64,8 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as {
-      tipoItinerario?: 'INGRESO' | 'SALIDA';
+      nombre?: string;
+      tipoItinerario?: string;
       fecha?: string;
       nota?: string;
       conCeladora?: boolean;
@@ -60,20 +73,24 @@ export async function POST(request: Request) {
       transporteId?: string;
       choferId?: string;
       celadoraId?: string | null;
+      puntoEncuentroId?: string | null;
       filas?: GrillaFilaInput[];
     };
 
-    const tipoItinerario = body.tipoItinerario;
+    const nombre = body.nombre?.trim() || '';
+    const tipoItinerario = body.tipoItinerario?.trim();
     const fecha = body.fecha?.trim();
     const areaId = body.areaId?.trim();
     const transporteId = body.transporteId?.trim();
     const choferId = body.choferId?.trim();
     const conCeladora = body.conCeladora !== false;
     const celadoraId = body.celadoraId?.trim() || null;
+    const puntoEncuentroId = body.puntoEncuentroId?.trim() || null;
     const filas = body.filas ?? [];
 
     const missing = missingFieldsMessage(
       {
+        nombre,
         tipoItinerario,
         fecha,
         areaId,
@@ -82,7 +99,8 @@ export async function POST(request: Request) {
         ...(conCeladora ? { celadoraId } : {}),
       },
       {
-        tipoItinerario: 'tipo de itinerario (Ingresos/Salidas)',
+        nombre: 'nombre de la grilla',
+        tipoItinerario: 'tipo de itinerario',
         fecha: 'fecha',
         areaId: 'área',
         transporteId: 'transporte',
@@ -94,9 +112,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: missing }, { status: 400 });
     }
 
+    if (!tipoItinerario || !isTipoItinerario(tipoItinerario)) {
+      return NextResponse.json(
+        { message: 'El tipo de itinerario no es válido.' },
+        { status: 400 },
+      );
+    }
+
     if (filas.length === 0) {
       return NextResponse.json(
-        { message: 'Agregá al menos una fila al itinerario (hora, dirección y acción).' },
+        { message: 'Agregá al menos una fila al itinerario (dirección y acción).' },
         { status: 400 },
       );
     }
@@ -104,9 +129,10 @@ export async function POST(request: Request) {
     for (let i = 0; i < filas.length; i++) {
       const fila = filas[i];
       const n = i + 1;
+      const esDestino = Boolean(fila.destinoId);
       const filaMissing = missingFieldsMessage(
         {
-          hora: fila.hora,
+          ...(esDestino ? { hora: fila.hora } : {}),
           direccion: fila.direccion,
           pasajeroNombre: fila.pasajeroNombre,
           accion: fila.accion,
@@ -115,7 +141,7 @@ export async function POST(request: Request) {
             : {}),
         },
         {
-          hora: `hora (fila ${n})`,
+          hora: `hora del destino (fila ${n})`,
           direccion: `dirección (fila ${n})`,
           pasajeroNombre: `detalle/pasajero (fila ${n})`,
           accion: `acción (fila ${n})`,
@@ -159,8 +185,11 @@ export async function POST(request: Request) {
       }
     }
 
-    const grilla = await prisma.grilla.create({
+    const grilla = await prisma.$transaction(async (tx) => {
+      await syncCoordsToSources(tx, filas);
+      return tx.grilla.create({
       data: {
+        nombre,
         tipoItinerario: tipoItinerario!,
         fecha: new Date(`${fecha}T00:00:00.000Z`),
         nota: body.nota?.trim() || null,
@@ -169,11 +198,12 @@ export async function POST(request: Request) {
         transporteId: transporteId!,
         choferId: choferId!,
         celadoraId: conCeladora ? celadoraId : null,
+        puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
         createdById: auth.user.id,
         filas: {
           create: filas.map((fila, index) => ({
             orden: index + 1,
-            hora: fila.hora.trim(),
+            hora: fila.hora?.trim() || null,
             direccion: fila.direccion.trim(),
             pasajeroNombre: fila.pasajeroNombre.trim(),
             pasajeroId: fila.pasajeroId || null,
@@ -183,10 +213,12 @@ export async function POST(request: Request) {
               normalizeAccion(fila.accion) === 'TRASBORDO'
                 ? fila.trasbordoHacia?.trim() || null
                 : null,
+            ...filaCoordsData(fila),
           })),
         },
       },
       include: grillaInclude,
+      });
     });
 
     const titulo = buildGrillaTitulo({

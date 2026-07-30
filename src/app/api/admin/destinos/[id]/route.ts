@@ -28,11 +28,21 @@ export async function PATCH(request: Request, { params }: Params) {
     if (typeof body.domicilio === 'string') data.domicilio = body.domicilio.trim();
     if (typeof body.active === 'boolean') data.active = body.active;
 
+    if (data.nombre === '' || data.domicilio === '') {
+      return NextResponse.json(
+        { message: 'El nombre y el domicilio no pueden quedar vacíos.' },
+        { status: 400 },
+      );
+    }
+
     const destino = await prisma.destino.update({ where: { id }, data });
     return NextResponse.json({ data: destino, message: 'Destino actualizado.' });
   } catch (error) {
-    console.error('[API /coord/destinos PATCH]', error);
-    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos actualizar el destino.') }, { status: 500 });
+    console.error('[API /admin/destinos PATCH]', error);
+    return NextResponse.json(
+      { message: describeCaughtError(error, 'No pudimos actualizar el destino.') },
+      { status: 500 },
+    );
   }
 }
 
@@ -51,7 +61,10 @@ export async function DELETE(_request: Request, { params }: Params) {
     await prisma.destino.delete({ where: { id } });
     return NextResponse.json({ message: 'Destino eliminado.' });
   } catch (error) {
-    console.error('[API /coord/destinos DELETE]', error);
-    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos eliminar el destino.') }, { status: 500 });
+    console.error('[API /admin/destinos DELETE]', error);
+    return NextResponse.json(
+      { message: describeCaughtError(error, 'No pudimos eliminar el destino.') },
+      { status: 500 },
+    );
   }
 }

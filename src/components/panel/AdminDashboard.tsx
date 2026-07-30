@@ -7,11 +7,13 @@ import { AdminPasajerosManager } from '@/components/panel/AdminPasajerosManager'
 import { AdminChoferesManager } from '@/components/panel/AdminChoferesManager';
 import { NovedadesVehiculoPanel } from '@/components/panel/NovedadesVehiculoPanel';
 import { InformeMetricasPanel } from '@/components/panel/InformeMetricasPanel';
+import { AdminAreasManager } from '@/components/panel/AdminAreasManager';
 import { AdminPublicacionesManager } from '@/components/panel/AdminPublicacionesManager';
 import { RespaldoHistorialPanel } from '@/components/panel/RespaldoHistorialPanel';
 
 type Tab =
   | 'usuarios'
+  | 'areas'
   | 'transportes'
   | 'pasajeros'
   | 'choferes'
@@ -22,6 +24,7 @@ type Tab =
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'usuarios', label: 'Usuarios' },
+  { id: 'areas', label: 'Áreas' },
   { id: 'transportes', label: 'Transportes' },
   { id: 'pasajeros', label: 'Pasajeros' },
   { id: 'choferes', label: 'Choferes' },
@@ -54,6 +57,7 @@ export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
 
         <div className="admin-tabs__panel" role="tabpanel">
           {tab === 'usuarios' && <AdminUsersManager currentUserId={currentUserId} />}
+          {tab === 'areas' && <AdminAreasManager />}
           {tab === 'transportes' && <AdminTransportesManager />}
           {tab === 'pasajeros' && <AdminPasajerosManager />}
           {tab === 'choferes' && <AdminChoferesManager />}

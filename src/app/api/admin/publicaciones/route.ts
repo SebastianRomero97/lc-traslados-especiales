@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     }
     if (!roles) {
       return NextResponse.json(
-        { message: 'Seleccioná al menos un destinatario (coordinadoras, celadoras o choferes).' },
+        { message: 'Seleccioná al menos un destinatario (Administración, celadoras o choferes).' },
         { status: 400 },
       );
     }

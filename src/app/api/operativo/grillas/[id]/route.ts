@@ -6,6 +6,7 @@ import {
   canAccessAsCeladora,
   canAccessAsChofer,
   findGrillaOperativa,
+  grillaInclude,
 } from '@/lib/operativo-grilla';
 import { hasRole } from '@/lib/roles';
 
@@ -75,16 +76,12 @@ export async function POST(request: Request, { params }: Params) {
         const updated = await prisma.grilla.update({
           where: { id },
           data: { celadoraInicioAt: now },
-          include: {
-            area: { select: { id: true, nombre: true } },
-            transporte: { select: { id: true, nombre: true, tipo: true } },
-            chofer: { select: { id: true, username: true } },
-            celadora: { select: { id: true, username: true } },
-            filas: { orderBy: { orden: 'asc' } },
-            asistencias: true,
-          },
+          include: grillaInclude,
         });
-        return NextResponse.json({ data: updated, message: 'Recorrido iniciado (subida de pasajeros).' });
+        return NextResponse.json({
+          data: updated,
+          message: 'Recorrido iniciado (subida de pasajeros).',
+        });
       }
       if (!grilla.celadoraInicioAt) {
         return NextResponse.json(
@@ -98,14 +95,7 @@ export async function POST(request: Request, { params }: Params) {
       const updated = await prisma.grilla.update({
         where: { id },
         data: { celadoraFinAt: now },
-        include: {
-          area: { select: { id: true, nombre: true } },
-          transporte: { select: { id: true, nombre: true, tipo: true } },
-          chofer: { select: { id: true, username: true } },
-          celadora: { select: { id: true, username: true } },
-          filas: { orderBy: { orden: 'asc' } },
-          asistencias: true,
-        },
+        include: grillaInclude,
       });
       return NextResponse.json({ data: updated, message: 'Recorrido finalizado.' });
     }
@@ -121,14 +111,7 @@ export async function POST(request: Request, { params }: Params) {
       const updated = await prisma.grilla.update({
         where: { id },
         data: { choferInicioAt: now },
-        include: {
-          area: { select: { id: true, nombre: true } },
-          transporte: { select: { id: true, nombre: true, tipo: true } },
-          chofer: { select: { id: true, username: true } },
-          celadora: { select: { id: true, username: true } },
-          filas: { orderBy: { orden: 'asc' } },
-          asistencias: true,
-        },
+        include: grillaInclude,
       });
       return NextResponse.json({ data: updated, message: 'Inicio de manejo registrado.' });
     }
@@ -144,14 +127,7 @@ export async function POST(request: Request, { params }: Params) {
     const updated = await prisma.grilla.update({
       where: { id },
       data: { choferFinAt: now },
-      include: {
-        area: { select: { id: true, nombre: true } },
-        transporte: { select: { id: true, nombre: true, tipo: true } },
-        chofer: { select: { id: true, username: true } },
-        celadora: { select: { id: true, username: true } },
-        filas: { orderBy: { orden: 'asc' } },
-        asistencias: true,
-      },
+      include: grillaInclude,
     });
     return NextResponse.json({ data: updated, message: 'Fin de manejo registrado.' });
   } catch (error) {

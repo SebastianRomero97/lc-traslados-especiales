@@ -251,7 +251,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
           <fieldset className="form-group admin-users__roles">
             <legend>Roles</legend>
             <p className="panel-card__desc" style={{ marginTop: 0 }}>
-              Marcá todos los que correspondan. Ejemplo: Celadora + Coordinadora.
+              Marcá todos los que correspondan. Ejemplo: Celadora + Administración.
             </p>
             <div className="admin-users__role-checks">
               {ASSIGNABLE_ROLES.map((role) => (

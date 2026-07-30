@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           message:
-            'Seleccioná al menos un rol válido (Coordinadora, Celadora y/o Chofer). El Admin no se asigna desde el panel.',
+            'Seleccioná al menos un rol válido (Administración, Celadora y/o Chofer). El Admin no se asigna desde el panel.',
         },
         { status: 400 },
       );

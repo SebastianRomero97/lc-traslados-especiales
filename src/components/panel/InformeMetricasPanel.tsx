@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { formatFechaGrilla, todayFechaInput } from '@/lib/grilla.utils';
+import { formatFechaGrilla, labelTipoItinerario, todayFechaInput } from '@/lib/grilla.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type PersonaListItem = { id: string; username: string; informes: number };
@@ -397,7 +397,7 @@ function CeladoraDetalleView({ detalle }: { detalle: CeladoraDetail }) {
                 <div className="informe-historial__head">
                   <strong>
                     {formatFechaGrilla(h.fecha)} ·{' '}
-                    {h.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'} · {h.transporte}
+                    {labelTipoItinerario(h.tipoItinerario)} · {h.transporte}
                   </strong>
                   <span>
                     {h.area} · Chofer {h.chofer} · {formatMinutos(h.duracionMinutos)}
@@ -478,7 +478,7 @@ function ChoferDetalleView({ detalle }: { detalle: ChoferDetail }) {
                 <div className="informe-historial__head">
                   <strong>
                     {formatFechaGrilla(h.fecha)} ·{' '}
-                    {h.tipoItinerario === 'INGRESO' ? 'Ingresos' : 'Salidas'} · {h.transporte}
+                    {labelTipoItinerario(h.tipoItinerario)} · {h.transporte}
                   </strong>
                   <span>
                     {h.area} ·{' '}

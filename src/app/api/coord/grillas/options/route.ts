@@ -44,13 +44,29 @@ export async function GET(request: Request) {
       pasajeros: {
         include: {
           pasajero: {
-            select: { id: true, nombre: true, direccion: true, active: true },
+            select: {
+              id: true,
+              nombre: true,
+              direccion: true,
+              lat: true,
+              lon: true,
+              usarCoordsParaChofer: true,
+              active: true,
+            },
           },
+          destinos: { select: { destinoId: true } },
         },
       },
       destinos: {
         where: { active: true },
-        select: { id: true, nombre: true, domicilio: true },
+        select: {
+          id: true,
+          nombre: true,
+          domicilio: true,
+          lat: true,
+          lon: true,
+          usarCoordsParaChofer: true,
+        },
         orderBy: { nombre: 'asc' },
       },
     },
@@ -88,7 +104,9 @@ export async function GET(request: Request) {
         .filter((p) => p.pasajero.active)
         .map((p) => ({
           ...p.pasajero,
-          destinoId: p.destinoId,
+          destinoIds: p.destinos.map((d) => d.destinoId),
+          /** Compat: primer destino (UI vieja de grillas). */
+          destinoId: p.destinos[0]?.destinoId ?? null,
         })),
       destinos: area.destinos,
       choferes,

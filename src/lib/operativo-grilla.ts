@@ -5,6 +5,17 @@ const grillaInclude = {
   transporte: { select: { id: true, nombre: true, tipo: true } },
   chofer: { select: { id: true, username: true } },
   celadora: { select: { id: true, username: true } },
+  puntoEncuentro: {
+    select: {
+      id: true,
+      nombre: true,
+      direccion: true,
+      frecuente: true,
+      lat: true,
+      lon: true,
+      usarCoordsParaChofer: true,
+    },
+  },
   filas: { orderBy: { orden: 'asc' as const } },
   asistencias: true,
 } as const;
