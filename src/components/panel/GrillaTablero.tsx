@@ -1146,7 +1146,10 @@ export function GrillaTablero({
                 onClick={() => toggleRecurso(section.key)}
                 aria-expanded={recursoAbierto === section.key}
               >
-                <span>{section.label}</span>
+                <span>
+                  <span aria-hidden="true">{recursoAbierto === section.key ? '▼' : '▶'}</span>{' '}
+                  {section.label}
+                </span>
                 <span className="grilla-recurso-acc__count">{section.count}</span>
               </button>
               {recursoAbierto === section.key && (
