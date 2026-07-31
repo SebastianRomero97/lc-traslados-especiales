@@ -2,8 +2,22 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCoordinadoraApi } from '@/lib/coordinadora-auth';
 import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
-import { buildGrillaTitulo, isTipoItinerario, normalizeAccion, type GrillaFilaInput } from '@/lib/grilla.utils';
+import {
+  buildGrillaTitulo,
+  isTipoGrupoItinerario,
+  isTipoItinerario,
+  normalizeAccion,
+  type GrillaFilaInput,
+  type TipoItinerario,
+} from '@/lib/grilla.utils';
 import { filaCoordsData, syncCoordsToSources } from '@/lib/coords-sync';
+import {
+  applyForceReassign,
+  conflictsResponseBody,
+  findResourceConflicts,
+  parseFechaDay,
+  tipoGrupoWhere,
+} from '@/lib/grilla-conflict';
 
 const grillaInclude = {
   area: { select: { id: true, nombre: true } },
@@ -36,9 +50,36 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const areaId = searchParams.get('areaId') ?? undefined;
+    const from = searchParams.get('from')?.trim() || undefined;
+    const to = searchParams.get('to')?.trim() || undefined;
+    const tipoGrupoRaw = searchParams.get('tipoGrupo')?.trim() || undefined;
+    const tipoGrupo =
+      tipoGrupoRaw && isTipoGrupoItinerario(tipoGrupoRaw) ? tipoGrupoRaw : undefined;
+
+    const fechaFilter =
+      from || to
+        ? {
+            fecha: {
+              ...(from ? { gte: parseFechaDay(from) } : {}),
+              ...(to
+                ? {
+                    lt: (() => {
+                      const end = parseFechaDay(to);
+                      end.setUTCDate(end.getUTCDate() + 1);
+                      return end;
+                    })(),
+                  }
+                : {}),
+            },
+          }
+        : {};
 
     const grillas = await prisma.grilla.findMany({
-      where: areaId ? { areaId } : undefined,
+      where: {
+        ...(areaId ? { areaId } : {}),
+        ...fechaFilter,
+        ...tipoGrupoWhere(tipoGrupo),
+      },
       orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
       include: grillaInclude,
     });
@@ -75,6 +116,7 @@ export async function POST(request: Request) {
       celadoraId?: string | null;
       puntoEncuentroId?: string | null;
       filas?: GrillaFilaInput[];
+      forceReassign?: boolean;
     };
 
     const nombre = body.nombre?.trim() || '';
@@ -87,6 +129,7 @@ export async function POST(request: Request) {
     const celadoraId = body.celadoraId?.trim() || null;
     const puntoEncuentroId = body.puntoEncuentroId?.trim() || null;
     const filas = body.filas ?? [];
+    const forceReassign = Boolean(body.forceReassign);
 
     const missing = missingFieldsMessage(
       {
@@ -185,39 +228,64 @@ export async function POST(request: Request) {
       }
     }
 
+    const fechaDay = parseFechaDay(fecha!);
+    const pasajeroIds = filas
+      .map((f) => f.pasajeroId?.trim())
+      .filter((id): id is string => Boolean(id));
+
+    const conflicts = await findResourceConflicts(prisma, {
+      fecha: fechaDay,
+      tipoItinerario: tipoItinerario as TipoItinerario,
+      areaId: areaId!,
+      areaNombre: area.nombre,
+      transporteId: transporteId!,
+      choferId: choferId!,
+      celadoraId: conCeladora ? celadoraId : null,
+      pasajeroIds,
+    });
+
+    if (conflicts.length > 0 && !forceReassign) {
+      return NextResponse.json(conflictsResponseBody(conflicts, area.nombre), {
+        status: 409,
+      });
+    }
+
     const grilla = await prisma.$transaction(async (tx) => {
+      if (conflicts.length > 0 && forceReassign) {
+        await applyForceReassign(tx, conflicts);
+      }
       await syncCoordsToSources(tx, filas);
       return tx.grilla.create({
-      data: {
-        nombre,
-        tipoItinerario: tipoItinerario!,
-        fecha: new Date(`${fecha}T00:00:00.000Z`),
-        nota: body.nota?.trim() || null,
-        conCeladora,
-        areaId: areaId!,
-        transporteId: transporteId!,
-        choferId: choferId!,
-        celadoraId: conCeladora ? celadoraId : null,
-        puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
-        createdById: auth.user.id,
-        filas: {
-          create: filas.map((fila, index) => ({
-            orden: index + 1,
-            hora: fila.hora?.trim() || null,
-            direccion: fila.direccion.trim(),
-            pasajeroNombre: fila.pasajeroNombre.trim(),
-            pasajeroId: fila.pasajeroId || null,
-            destinoId: fila.destinoId || null,
-            accion: normalizeAccion(fila.accion),
-            trasbordoHacia:
-              normalizeAccion(fila.accion) === 'TRASBORDO'
-                ? fila.trasbordoHacia?.trim() || null
-                : null,
-            ...filaCoordsData(fila),
-          })),
+        data: {
+          nombre,
+          tipoItinerario: tipoItinerario!,
+          fecha: fechaDay,
+          nota: body.nota?.trim() || null,
+          conCeladora,
+          areaId: areaId!,
+          transporteId: transporteId!,
+          choferId: choferId!,
+          celadoraId: conCeladora ? celadoraId : null,
+          puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
+          createdById: auth.user.id,
+          filas: {
+            create: filas.map((fila, index) => ({
+              orden: index + 1,
+              hora: fila.hora?.trim() || null,
+              direccion: fila.direccion.trim(),
+              pasajeroNombre: fila.pasajeroNombre.trim(),
+              pasajeroId: fila.pasajeroId || null,
+              destinoId: fila.destinoId || null,
+              accion: normalizeAccion(fila.accion),
+              trasbordoHacia:
+                normalizeAccion(fila.accion) === 'TRASBORDO'
+                  ? fila.trasbordoHacia?.trim() || null
+                  : null,
+              ...filaCoordsData(fila),
+            })),
+          },
         },
-      },
-      include: grillaInclude,
+        include: grillaInclude,
       });
     });
 

@@ -21,6 +21,19 @@ export async function GET(_request: Request, { params }: Params) {
           user: { select: { id: true, username: true, active: true, roles: true } },
         },
       },
+      choferes: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              active: true,
+              isPrestador: true,
+              transporteId: true,
+            },
+          },
+        },
+      },
       transportes: {
         include: {
           transporte: {

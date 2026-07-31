@@ -147,6 +147,10 @@ type Props = {
   areaId: string;
   options: GrillaTableroOptions;
   initial: GrillaTableroInitial | null;
+  /** Fecha sugerida al crear (YYYY-MM-DD). */
+  defaultFecha?: string;
+  /** Tipo de itinerario sugerido al crear. */
+  defaultTipoItinerario?: TipoItinerario;
   onSaved: () => void;
   onDeleted?: () => void;
   onCancel: () => void;
@@ -156,6 +160,8 @@ export function GrillaTablero({
   areaId,
   options,
   initial,
+  defaultFecha,
+  defaultTipoItinerario,
   onSaved,
   onDeleted,
   onCancel,
@@ -164,7 +170,9 @@ export function GrillaTablero({
   const isNew = !initial?.id;
 
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
-  const initialSplit = splitTipoItinerario(initial?.tipoItinerario ?? 'INGRESO');
+  const initialSplit = splitTipoItinerario(
+    initial?.tipoItinerario ?? defaultTipoItinerario ?? 'INGRESO',
+  );
   const [modalidad, setModalidad] = useState<ModalidadItinerario>(initialSplit.modalidad);
   const [sentido, setSentido] = useState<SentidoItinerario | ''>(() => {
     if (initialSplit.modalidad === 'ESPECIAL') return initialSplit.sentido;
@@ -172,7 +180,11 @@ export function GrillaTablero({
   });
   const tipoItinerario = buildTipoItinerario(modalidad, sentido);
   const [fecha, setFecha] = useState(
-    initial ? fechaToInput(initial.fecha) : todayFechaInput(),
+    initial
+      ? fechaToInput(initial.fecha)
+      : defaultFecha && /^\d{4}-\d{2}-\d{2}/.test(defaultFecha)
+        ? defaultFecha.slice(0, 10)
+        : todayFechaInput(),
   );
   const [nota, setNota] = useState(initial?.nota ?? '');
   const [transporteId, setTransporteId] = useState(initial?.transporte.id ?? '');
@@ -745,14 +757,31 @@ export function GrillaTablero({
         })),
       };
 
-      const response = await fetch(
-        isNew ? '/api/coord/grillas' : `/api/coord/grillas/${initial!.id}`,
-        {
+      const saveOnce = async (forceReassign: boolean) =>
+        fetch(isNew ? '/api/coord/grillas' : `/api/coord/grillas/${initial!.id}`, {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        },
-      );
+          body: JSON.stringify({ ...payload, forceReassign }),
+        });
+
+      let response = await saveOnce(false);
+      if (response.status === 409) {
+        const conflictBody = (await response.json()) as {
+          message?: string;
+          code?: string;
+        };
+        const ok = await popup.confirm({
+          title: 'Recurso ya asignado',
+          message:
+            conflictBody.message ??
+            'Este recurso ya está asignado en otra área. ¿Desea reasignarlo aquí?',
+          confirmLabel: 'Sí, reasignar',
+          cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
+        response = await saveOnce(true);
+      }
+
       if (!response.ok) {
         popup.error(await readApiError(response, 'No se pudo guardar la grilla.'));
         return;

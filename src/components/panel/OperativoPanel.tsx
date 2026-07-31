@@ -81,7 +81,13 @@ function isJornadaCerradaGrilla(g: GrillaOperativa, rol: 'CELADORA' | 'CHOFER'):
 
 type SeccionOperativo = 'principal' | 'historial' | 'vehiculo';
 
-export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
+export function OperativoPanel({
+  rol,
+  isPrestador = false,
+}: {
+  rol: 'CELADORA' | 'CHOFER';
+  isPrestador?: boolean;
+}) {
   const popup = usePanelPopup();
   const [grillas, setGrillas] = useState<GrillaOperativa[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -246,7 +252,8 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
               rol,
               informeChoferCeladora: selected.conCeladora ? choferForm.celadora : '',
               informeChoferVehiculo: choferForm.vehiculo,
-              combustibleNivel: choferForm.combustible,
+              combustibleNivel: isPrestador ? null : choferForm.combustible,
+              isPrestador,
             };
 
       const response = await fetch(`/api/operativo/grillas/${selected.id}/informe`, {
@@ -287,7 +294,7 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
 
   const choferInformeListo =
     Boolean(choferForm.vehiculo.trim()) &&
-    Boolean(choferForm.combustible) &&
+    (isPrestador || Boolean(choferForm.combustible)) &&
     (!selected?.conCeladora || Boolean(choferForm.celadora.trim()));
 
   const itemsControl = selected ? extractItemsParaControl(selected.filas) : [];
@@ -918,6 +925,7 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                             />
                           </div>
 
+                          {!isPrestador && (
                           <div className="form-group">
                             <label htmlFor="inf-combustible">Nivel de combustible</label>
                             <select
@@ -943,6 +951,12 @@ export function OperativoPanel({ rol }: { rol: 'CELADORA' | 'CHOFER' }) {
                               comparar consumo a futuro.
                             </p>
                           </div>
+                          )}
+                          {isPrestador && (
+                            <p className="panel-card__desc">
+                              Prestador: no se solicita nivel de combustible (vehículo propio).
+                            </p>
+                          )}
 
                           <button
                             type="button"

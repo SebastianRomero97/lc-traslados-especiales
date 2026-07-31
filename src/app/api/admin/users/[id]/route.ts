@@ -26,9 +26,16 @@ export async function PATCH(request: Request, { params }: Params) {
       username?: string;
       active?: boolean;
       roles?: unknown;
+      isPrestador?: boolean;
     };
 
-    const data: { username?: string; active?: boolean; roles?: Role[]; transporteId?: null } = {};
+    const data: {
+      username?: string;
+      active?: boolean;
+      roles?: Role[];
+      transporteId?: null;
+      isPrestador?: boolean;
+    } = {};
 
     if (typeof body.username === 'string') {
       const username = body.username.trim();
@@ -81,6 +88,14 @@ export async function PATCH(request: Request, { params }: Params) {
       if (!body.roles.includes('CHOFER') && existing.transporteId) {
         data.transporteId = null;
       }
+      if (!body.roles.includes('CHOFER')) {
+        data.isPrestador = false;
+      }
+    }
+
+    if (typeof body.isPrestador === 'boolean') {
+      const rolesForCheck = (data.roles ?? existing.roles) as Role[];
+      data.isPrestador = rolesForCheck.includes('CHOFER') ? body.isPrestador : false;
     }
 
     if (Object.keys(data).length === 0) {
@@ -95,6 +110,7 @@ export async function PATCH(request: Request, { params }: Params) {
         username: true,
         roles: true,
         active: true,
+        isPrestador: true,
         createdAt: true,
       },
     });

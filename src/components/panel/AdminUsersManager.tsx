@@ -15,6 +15,7 @@ type AdminUser = {
   username: string;
   roles: Role[];
   active: boolean;
+  isPrestador?: boolean;
   createdAt: string;
 };
 
@@ -22,6 +23,7 @@ type EditForm = {
   username: string;
   active: boolean;
   roles: Role[];
+  isPrestador: boolean;
 };
 
 export function AdminUsersManager({ currentUserId }: { currentUserId: string }) {
@@ -33,12 +35,14 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     username: '',
     password: '',
     roles: ['CELADORA'] as Role[],
+    isPrestador: false,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
     username: '',
     active: true,
     roles: [],
+    isPrestador: false,
   });
 
   const loadUsers = useCallback(async () => {
@@ -71,7 +75,11 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     setForm((prev) => {
       const has = prev.roles.includes(role);
       const roles = has ? prev.roles.filter((r) => r !== role) : [...prev.roles, role];
-      return { ...prev, roles };
+      return {
+        ...prev,
+        roles,
+        isPrestador: roles.includes('CHOFER') ? prev.isPrestador : false,
+      };
     });
   };
 
@@ -79,7 +87,11 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     setEditForm((prev) => {
       const has = prev.roles.includes(role);
       const roles = has ? prev.roles.filter((r) => r !== role) : [...prev.roles, role];
-      return { ...prev, roles };
+      return {
+        ...prev,
+        roles,
+        isPrestador: roles.includes('CHOFER') ? prev.isPrestador : false,
+      };
     });
   };
 
@@ -89,12 +101,13 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       username: user.username,
       active: user.active,
       roles: [...user.roles],
+      isPrestador: Boolean(user.isPrestador),
     });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditForm({ username: '', active: true, roles: [] });
+    setEditForm({ username: '', active: true, roles: [], isPrestador: false });
   };
 
   const handleCreate = async (event: FormEvent) => {
@@ -123,6 +136,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
           username: form.username,
           password: form.password,
           roles: form.roles,
+          isPrestador: form.isPrestador,
         }),
       });
 
@@ -132,7 +146,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       }
 
       const body = (await response.json()) as { message?: string };
-      setForm({ username: '', password: '', roles: ['CELADORA'] });
+      setForm({ username: '', password: '', roles: ['CELADORA'], isPrestador: false });
       popup.success(body.message ?? 'Usuario creado.');
       await loadUsers();
     } catch {
@@ -159,12 +173,18 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
 
     setSubmitting(true);
     try {
-      const payload: { username: string; active: boolean; roles?: Role[] } = {
+      const payload: {
+        username: string;
+        active: boolean;
+        roles?: Role[];
+        isPrestador?: boolean;
+      } = {
         username: editForm.username.trim(),
         active: editForm.active,
       };
       if (!isAdmin) {
         payload.roles = editForm.roles;
+        payload.isPrestador = editForm.isPrestador;
       }
 
       const response = await fetch(`/api/admin/users/${user.id}`, {
@@ -265,6 +285,18 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                 </label>
               ))}
             </div>
+            {form.roles.includes('CHOFER') && (
+              <label className="admin-users__role-check" style={{ marginTop: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={form.isPrestador}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, isPrestador: e.target.checked }))
+                  }
+                />
+                Prestador (vehículo propio, sin rendir combustible)
+              </label>
+            )}
           </fieldset>
 
           <button
@@ -328,6 +360,21 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                                 {ROLE_LABEL[role]}
                               </label>
                             ))}
+                            {editForm.roles.includes('CHOFER') && (
+                              <label className="admin-users__role-check">
+                                <input
+                                  type="checkbox"
+                                  checked={editForm.isPrestador}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      isPrestador: e.target.checked,
+                                    }))
+                                  }
+                                />
+                                Prestador
+                              </label>
+                            )}
                           </div>
                         ) : (
                           <div className="admin-users__role-list">
@@ -339,6 +386,9 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                                 {ROLE_LABEL[role]}
                               </span>
                             ))}
+                            {user.isPrestador && (
+                              <span className="role-badge role-badge--chofer">Prestador</span>
+                            )}
                           </div>
                         )}
                       </td>

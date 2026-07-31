@@ -23,6 +23,8 @@ export type SessionUser = {
   id: string;
   username: string;
   roles: Role[];
+  /** Chofer con vehículo propio: no rinde combustible. */
+  isPrestador?: boolean;
 };
 
 export function hasRole(user: { roles: Role[] }, role: Role): boolean {

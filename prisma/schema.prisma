@@ -63,7 +63,11 @@ model User {
   transporteId String?
   transporte   Transporte? @relation("ChoferVehiculo", fields: [transporteId], references: [id], onDelete: SetNull)
 
+  /// Chofer con vehículo propio (Prestador): no rinde combustible.
+  isPrestador Boolean @default(false)
+
   areasComoCeladora       AreaCeladora[]
+  areasComoChofer         AreaChofer[]
   transportesComoCeladora TransporteCeladora[]
   puntosEncuentro         PuntoEncuentro[]
 
@@ -118,6 +122,7 @@ model Area {
 
   destinos    Destino[]
   celadoras   AreaCeladora[]
+  choferes    AreaChofer[]
   transportes AreaTransporte[]
   pasajeros   AreaPasajero[]
   grillas     Grilla[]
@@ -144,6 +149,16 @@ model Destino {
 }
 
 model AreaCeladora {
+  areaId String
+  userId String
+  area   Area @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([areaId, userId])
+}
+
+/// Choferes (y prestadores) disponibles en un área.
+model AreaChofer {
   areaId String
   userId String
   area   Area @relation(fields: [areaId], references: [id], onDelete: Cascade)

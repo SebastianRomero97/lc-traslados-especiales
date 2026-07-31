@@ -35,6 +35,8 @@ Se necesita un **backend** para soportar usuarios, roles, áreas, grillas, etc.
 - Renombre visible Coordinadora → Administración (ruta `/panel/coordinadora` se mantiene).
 - Áreas y destinos: solo Admin crea/edita/elimina.
 - Administración elige área y asigna recursos.
+- Shell: toggle de paneles multi-rol; tablero Área con pool acordeón + pestañas de área (DnD).
+- Prestador: chofer marcado (sin rendir combustible).
 
 ### Etapa 2 (lista)
 - Grilla con **nombre** (crear / listar / borrar).

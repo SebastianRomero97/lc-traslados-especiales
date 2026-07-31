@@ -31,7 +31,8 @@ export async function PATCH(request: Request, { params }: Params) {
       informe?: string;
       informeChoferCeladora?: string;
       informeChoferVehiculo?: string;
-      combustibleNivel?: string;
+      combustibleNivel?: string | null;
+      isPrestador?: boolean;
     };
 
     if (body.rol !== 'CELADORA' && body.rol !== 'CHOFER') {
@@ -108,7 +109,10 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const obsCeladora = body.informeChoferCeladora?.trim() ?? '';
     const obsVehiculo = body.informeChoferVehiculo?.trim() ?? '';
-    const combustible = body.combustibleNivel as NivelCombustible | undefined;
+    const esPrestador = Boolean(body.isPrestador) || Boolean(auth.user.isPrestador);
+    const combustible = esPrestador
+      ? null
+      : (body.combustibleNivel as NivelCombustible | undefined);
 
     if (grilla.conCeladora && !obsCeladora) {
       return NextResponse.json(
@@ -122,7 +126,7 @@ export async function PATCH(request: Request, { params }: Params) {
         { status: 400 },
       );
     }
-    if (!combustible || !NIVELES.includes(combustible)) {
+    if (!esPrestador && (!combustible || !NIVELES.includes(combustible))) {
       return NextResponse.json(
         { message: 'Seleccioná el nivel de combustible del vehículo.' },
         { status: 400 },
@@ -133,7 +137,7 @@ export async function PATCH(request: Request, { params }: Params) {
       conCeladora: grilla.conCeladora,
       obsCeladora: grilla.conCeladora ? obsCeladora : null,
       obsVehiculo,
-      combustible,
+      combustible: esPrestador ? null : combustible,
     });
 
     const updated = await prisma.grilla.update({
@@ -142,7 +146,7 @@ export async function PATCH(request: Request, { params }: Params) {
         informeChofer: informeTexto,
         informeChoferCeladora: grilla.conCeladora ? obsCeladora : null,
         informeChoferVehiculo: obsVehiculo,
-        combustibleNivel: combustible,
+        combustibleNivel: esPrestador ? null : combustible,
       },
       select: {
         id: true,

@@ -1,92 +1,149 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+
+import { DragEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
-/** Colores estables por destino (asignación visual pasajero ↔ destino). */
+
+/** Colores bien diferenciados (primarios) para vincular pasajero ↔ destino. */
 const DESTINO_PALETTE = [
-  '#e11d48',
-  '#ea580c',
-  '#ca8a04',
-  '#16a34a',
-  '#0891b2',
-  '#2563eb',
-  '#7c3aed',
-  '#db2777',
-  '#0f766e',
-  '#b45309',
+  '#dc2626', // rojo
+  '#2563eb', // azul
+  '#eab308', // amarillo
+  '#16a34a', // verde
+  '#7c3aed', // violeta
+  '#ea580c', // naranja
 ];
-type AreaSummary = {
+
+const DRAG_MIME = 'application/x-lc-recurso-area';
+
+type RecursoKind =
+  | 'celadora'
+  | 'chofer'
+  | 'prestador'
+  | 'vehiculo'
+  | 'pasajero'
+  | 'destino';
+
+type AreaRef = { id: string; nombre: string };
+
+type PoolCeladora = { id: string; username: string; areaIds: string[]; areas: AreaRef[] };
+type PoolChofer = {
+  id: string;
+  username: string;
+  isPrestador: boolean;
+  transporteId: string | null;
+  transporte: { id: string; nombre: string; tipo: string } | null;
+  areaIds: string[];
+  areas: AreaRef[];
+};
+type PoolVehiculo = {
   id: string;
   nombre: string;
-  active: boolean;
-  _count: {
-    destinos: number;
-    celadoras: number;
-    transportes: number;
-    pasajeros: number;
-  };
+  tipo: string;
+  choferes: { id: string; username: string; isPrestador: boolean }[];
+  areaIds: string[];
+  areas: AreaRef[];
 };
-type Destino = {
+type PoolPasajero = {
+  id: string;
+  nombre: string;
+  direccion: string;
+  areaIds: string[];
+  areas: AreaRef[];
+};
+type PoolDestino = {
   id: string;
   nombre: string;
   domicilio: string;
-  active: boolean;
+  areaId: string;
+  area: AreaRef;
 };
-type OptionUser = { id: string; username: string; active?: boolean };
-type OptionTransporte = { id: string; nombre: string; tipo: string };
-type OptionPasajero = { id: string; nombre: string; direccion: string };
+
+type RecursosPool = {
+  areas: AreaRef[];
+  celadoras: PoolCeladora[];
+  choferes: PoolChofer[];
+  prestadores: PoolChofer[];
+  transportes: PoolVehiculo[];
+  pasajeros: PoolPasajero[];
+  destinos: PoolDestino[];
+};
+
 type AreaDetail = {
   id: string;
   nombre: string;
-  active: boolean;
-  destinos: Destino[];
-  celadoras: { user: OptionUser & { active: boolean; roles: string[] } }[];
+  destinos: { id: string; nombre: string; domicilio: string; active: boolean }[];
+  celadoras: { user: { id: string; username: string; active: boolean } }[];
+  choferes?: { user: { id: string; username: string; active: boolean; isPrestador: boolean } }[];
   transportes: {
-    transporte: OptionTransporte & {
-      celadoras: { user: OptionUser & { active: boolean } }[];
-      choferes: (OptionUser & { active?: boolean })[];
+    transporte: {
+      id: string;
+      nombre: string;
+      tipo: string;
+      choferes: { id: string; username: string }[];
     };
   }[];
   pasajeros: {
-    pasajero: OptionPasajero & { active: boolean };
+    pasajero: { id: string; nombre: string; direccion: string; active: boolean };
     destinoIds: string[];
-    destinos: { id: string; nombre: string; domicilio: string; active: boolean }[];
   }[];
 };
+
+type AccordionKey =
+  | 'celadoras'
+  | 'choferes'
+  | 'vehiculos'
+  | 'prestadores'
+  | 'pasajeros'
+  | 'destinos';
+
+function setDrag(e: DragEvent, kind: RecursoKind, id: string) {
+  e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ kind, id }));
+  e.dataTransfer.setData('text/plain', JSON.stringify({ kind, id }));
+  e.dataTransfer.effectAllowed = 'copy';
+}
+
+function readDrag(e: DragEvent): { kind: RecursoKind; id: string } | null {
+  const raw = e.dataTransfer.getData(DRAG_MIME) || e.dataTransfer.getData('text/plain');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as { kind: RecursoKind; id: string };
+  } catch {
+    return null;
+  }
+}
+
 export function CoordinadoraDashboard() {
   const popup = usePanelPopup();
-  const [areas, setAreas] = useState<AreaSummary[]>([]);
-  const [selectedAreaId, setSelectedAreaId] = useState<string>('');
+  const [pool, setPool] = useState<RecursosPool | null>(null);
+  const [selectedAreaId, setSelectedAreaId] = useState('');
   const [detail, setDetail] = useState<AreaDetail | null>(null);
-  const [options, setOptions] = useState<{
-    celadoras: OptionUser[];
-    transportes: OptionTransporte[];
-    pasajeros: OptionPasajero[];
-  }>({ celadoras: [], transportes: [], pasajeros: [] });
   const [loading, setLoading] = useState(true);
-  const [pickCeladora, setPickCeladora] = useState('');
-  const [pickTransporte, setPickTransporte] = useState('');
-  const [pickPasajero, setPickPasajero] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
   const [selectedDestinoId, setSelectedDestinoId] = useState<string | null>(null);
-  const [openAssign, setOpenAssign] = useState({
+  const [openAcc, setOpenAcc] = useState<Record<AccordionKey, boolean>>({
     celadoras: true,
-    transportes: true,
+    choferes: false,
+    vehiculos: true,
+    prestadores: false,
+    pasajeros: true,
+    destinos: false,
   });
-  const toggleAssign = (key: keyof typeof openAssign) => {
-    setOpenAssign((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-  const loadAreas = useCallback(async () => {
-    const response = await fetch('/api/coord/areas');
+
+  const loadPool = useCallback(async () => {
+    const response = await fetch('/api/coord/recursos');
     const body = await response.json();
     if (!response.ok) {
-      popup.error(body.message ?? 'No se pudieron cargar las áreas.');
-      return [] as AreaSummary[];
+      popup.error(body.message ?? 'No se pudieron cargar los recursos.');
+      return null;
     }
-    const list = body.data as AreaSummary[];
-    setAreas(list);
-    return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
+    const data = body.data as RecursosPool;
+    setPool(data);
+    return data;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   const loadDetail = useCallback(async (areaId: string) => {
     if (!areaId) {
       setDetail(null);
@@ -99,57 +156,141 @@ export function CoordinadoraDashboard() {
       return;
     }
     setDetail(body.data.area as AreaDetail);
-    setOptions(body.data.options);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable en uso
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      const list = await loadAreas();
-      setSelectedAreaId((current) => current || list[0]?.id || '');
+      const data = await loadPool();
+      setSelectedAreaId((current) => current || data?.areas[0]?.id || '');
       setLoading(false);
     })();
-  }, [loadAreas]);
+  }, [loadPool]);
+
   useEffect(() => {
     if (selectedAreaId) {
       setSelectedDestinoId(null);
       void loadDetail(selectedAreaId);
     }
   }, [selectedAreaId, loadDetail]);
+
   const refresh = async () => {
-    await loadAreas();
+    await loadPool();
     if (selectedAreaId) await loadDetail(selectedAreaId);
   };
+
   const assign = async (payload: Record<string, string | null>) => {
     if (!selectedAreaId) {
       popup.error('Seleccioná un área primero.');
       return;
     }
-    const response = await fetch('/api/coord/asignaciones', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ areaId: selectedAreaId, ...payload }),
-    });
-    if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo actualizar la asignación.'));
+    setBusy(true);
+    try {
+      const response = await fetch('/api/coord/asignaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ areaId: selectedAreaId, ...payload }),
+      });
+      if (!response.ok) {
+        popup.error(await readApiError(response, 'No se pudo actualizar la asignación.'));
+        return;
+      }
+      const body = (await response.json()) as { message?: string };
+      popup.success(body.message ?? 'Asignación actualizada.');
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const areaNombre = (id: string) =>
+    pool?.areas.find((a) => a.id === id)?.nombre ?? detail?.nombre ?? 'área';
+
+  const handleDropOnArea = async (e: DragEvent) => {
+    e.preventDefault();
+    setDropHover(false);
+    const payload = readDrag(e);
+    if (!payload || !selectedAreaId || busy) return;
+
+    if (payload.kind === 'celadora') {
+      if (detail?.celadoras.some((c) => c.user.id === payload.id)) {
+        popup.warning('Esa celadora ya está en el área.');
+        return;
+      }
+      await assign({ action: 'add_celadora', userId: payload.id });
       return;
     }
-    const body = (await response.json()) as { message?: string };
-    popup.success(body.message ?? 'Asignación actualizada.');
-    await refresh();
+
+    if (payload.kind === 'chofer' || payload.kind === 'prestador') {
+      if (detail?.choferes?.some((c) => c.user.id === payload.id)) {
+        popup.warning('Ese chofer ya está en el área.');
+        return;
+      }
+      await assign({ action: 'add_chofer', userId: payload.id });
+      return;
+    }
+
+    if (payload.kind === 'vehiculo') {
+      if (detail?.transportes.some((t) => t.transporte.id === payload.id)) {
+        popup.warning('Ese vehículo ya está en el área.');
+        return;
+      }
+      await assign({ action: 'add_transporte', transporteId: payload.id });
+      return;
+    }
+
+    if (payload.kind === 'pasajero') {
+      if (detail?.pasajeros.some((p) => p.pasajero.id === payload.id)) {
+        popup.warning('Ese pasajero ya está en el área.');
+        return;
+      }
+      const pasajero = pool?.pasajeros.find((p) => p.id === payload.id);
+      const otras = pasajero?.areas.filter((a) => a.id !== selectedAreaId) ?? [];
+      if (otras.length > 0) {
+        const ok = await popup.confirm({
+          title: 'Pasajero en otra área',
+          message: `Este pasajero está asignado en ${otras.map((a) => a.nombre).join(', ')}, ¿deseás asignarlo también en ${areaNombre(selectedAreaId)}?`,
+          confirmLabel: 'Sí, asignar también',
+          cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
+      }
+      await assign({ action: 'add_pasajero', pasajeroId: payload.id });
+      return;
+    }
+
+    if (payload.kind === 'destino') {
+      const destino = pool?.destinos.find((d) => d.id === payload.id);
+      if (!destino) return;
+      if (destino.areaId === selectedAreaId) {
+        popup.warning('Ese destino ya pertenece a esta área.');
+        return;
+      }
+      const ok = await popup.confirm({
+        title: 'Mover destino',
+        message: `El destino “${destino.nombre}” está en ${destino.area.nombre}. ¿Moverlo a ${areaNombre(selectedAreaId)}?`,
+        confirmLabel: 'Mover',
+        cancelLabel: 'Cancelar',
+      });
+      if (!ok) return;
+      await assign({ action: 'set_destino_area', destinoId: payload.id });
+    }
   };
-  const assignedCeladoraIds = new Set(detail?.celadoras.map((c) => c.user.id) ?? []);
-  const assignedTransporteIds = new Set(detail?.transportes.map((t) => t.transporte.id) ?? []);
-  const assignedPasajeroIds = new Set(detail?.pasajeros.map((p) => p.pasajero.id) ?? []);
+
   const destinosAsignables =
-    detail?.destinos.filter(
-      (d) => d.active && !/^base\s*lc$/i.test(d.nombre.trim()),
-    ) ?? [];
-  const destinoColorById = new Map(
-    destinosAsignables.map((d, index) => [d.id, DESTINO_PALETTE[index % DESTINO_PALETTE.length]]),
+    detail?.destinos.filter((d) => d.active && !/^base\s*lc$/i.test(d.nombre.trim())) ?? [];
+  const destinoColorById = useMemo(
+    () =>
+      new Map(
+        destinosAsignables.map((d, index) => [
+          d.id,
+          DESTINO_PALETTE[index % DESTINO_PALETTE.length],
+        ]),
+      ),
+    [destinosAsignables],
   );
-  const countPasajerosPorDestino = (destinoId: string) =>
-    detail?.pasajeros.filter((p) => p.destinoIds.includes(destinoId)).length ?? 0;
+
   const togglePasajeroDestino = (pasajeroId: string) => {
     if (!selectedDestinoId) {
       popup.error('Primero seleccioná un destino a la derecha.');
@@ -161,20 +302,7 @@ export function CoordinadoraDashboard() {
       destinoId: selectedDestinoId,
     });
   };
-  const unavailableCeladoras =
-    detail?.celadoras.filter((c) => !c.user.active).map((c) => c.user.username) ?? [];
-  const unavailablePasajeros =
-    detail?.pasajeros.filter((p) => !p.pasajero.active).map((p) => p.pasajero.nombre) ?? [];
-  const unavailableTransporteCeladoras =
-    detail?.transportes.flatMap((t) =>
-      t.transporte.celadoras
-        .filter((c) => !c.user.active)
-        .map((c) => c.user.username),
-    ) ?? [];
-  const hasUnavailableAssignments =
-    unavailableCeladoras.length > 0 ||
-    unavailablePasajeros.length > 0 ||
-    unavailableTransporteCeladoras.length > 0;
+
   if (loading) {
     return (
       <>
@@ -183,511 +311,461 @@ export function CoordinadoraDashboard() {
       </>
     );
   }
+
+  const renderPoolCard = (
+    key: string,
+    title: string,
+    subtitle: string | undefined,
+    kind: RecursoKind,
+    id: string,
+    usedInCurrent: boolean,
+    usedElsewhere?: string,
+    usedStyle?: 'muted' | 'used',
+  ) => (
+    <div
+      key={key}
+      className={`coord-pool-card${usedInCurrent ? ' is-in-area' : ''}${
+        usedStyle === 'used' ? ' is-used' : ''
+      }`}
+      draggable={!busy}
+      onDragStart={(e) => setDrag(e, kind, id)}
+    >
+      <strong>{title}</strong>
+      {subtitle && <small>{subtitle}</small>}
+      {usedInCurrent && <span className="coord-pool-card__badge">En esta área</span>}
+      {!usedInCurrent && usedElsewhere && (
+        <span className="coord-pool-card__badge coord-pool-card__badge--other">
+          {usedElsewhere}
+        </span>
+      )}
+    </div>
+  );
+
   return (
-    <div className="coord-dashboard">
+    <div className="coord-dashboard coord-dashboard--board">
       {popup.popupNode}
-      <section className="panel-card">
-        <h2>Elegí el área</h2>
-        <p className="panel-card__desc">
-          Las áreas y destinos los carga Admin. Acá seleccionás el área para asignar recursos y
-          armar grillas.
-        </p>
-      </section>
 
-      <div className="admin-tabs-shell">
-        <div className="admin-tabs" role="tablist" aria-label="Áreas">
-          {areas.map((area) => (
-            <button
-              key={area.id}
-              type="button"
-              role="tab"
-              aria-selected={selectedAreaId === area.id}
-              className={`admin-tabs__btn${selectedAreaId === area.id ? ' is-active' : ''}`}
-              onClick={() => setSelectedAreaId(area.id)}
-            >
-              {area.nombre}
-            </button>
-          ))}
-        </div>
-        <div className="admin-tabs__panel">
-          {!detail ? (
-            <p className="panel-card__desc" style={{ margin: 0 }}>
-              {areas.length === 0
-                ? 'Todavía no hay áreas. Pedile a Admin que las cree.'
-                : 'Seleccioná un área para ver destinos y asignaciones.'}
-            </p>
-          ) : (
-            <div className="coord-area-detail">
-          <section className="panel-card panel-card--nested">
-            <h2>Destinos — {detail.nombre}</h2>
-            <p className="panel-card__desc">
-              Solo lectura. Los destinos los gestiona Admin.
-            </p>
-            {detail.destinos.length === 0 ? (
-              <p className="panel-card__desc">Sin destinos todavía. Pedile a Admin que los cargue.</p>
-            ) : (
-              <div className="admin-users__table-wrap">
-                <table className="admin-users__table">
-                  <thead>
-                    <tr>
-                      <th>Nombre</th>
-                      <th>Domicilio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.destinos.map((destino) => (
-                      <tr key={destino.id}>
-                        <td>{destino.nombre}</td>
-                        <td>{destino.domicilio}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-          <section className="panel-card">
-            <h2>Asignaciones — {detail.nombre}</h2>
-            <p className="panel-card__desc">
-              Primero asigná celadoras y transportes al área. Después vinculá pasajeros a cada
-              destino con las dos columnas de abajo.
-            </p>
+      <div className="coord-board">
+        <aside className="coord-board__pool panel-card">
+          <h2>Recursos</h2>
+          <p className="panel-card__desc">
+            Arrastrá al área activa. Celadoras, choferes y vehículos pueden estar en varias áreas.
+          </p>
 
-
-
-            {hasUnavailableAssignments && (
-              <div className="coord-unavailable-banner" role="status">
-                <span className="coord-unavailable-banner__icon" aria-hidden="true">
-                  !
+          {(
+            [
+              {
+                key: 'celadoras' as const,
+                label: 'Celadoras',
+                count: pool?.celadoras.length ?? 0,
+                body: pool?.celadoras.map((c) =>
+                  renderPoolCard(
+                    c.id,
+                    c.username,
+                    undefined,
+                    'celadora',
+                    c.id,
+                    c.areaIds.includes(selectedAreaId),
+                    c.areas.length
+                      ? `En: ${c.areas.map((a) => a.nombre).join(', ')}`
+                      : undefined,
+                  ),
+                ),
+              },
+              {
+                key: 'choferes' as const,
+                label: 'Choferes',
+                count: pool?.choferes.length ?? 0,
+                body: pool?.choferes.map((c) =>
+                  renderPoolCard(
+                    c.id,
+                    c.username,
+                    c.transporte ? `Vehículo: ${c.transporte.nombre}` : 'Sin vehículo',
+                    'chofer',
+                    c.id,
+                    c.areaIds.includes(selectedAreaId),
+                    c.areas.length
+                      ? `En: ${c.areas.map((a) => a.nombre).join(', ')}`
+                      : undefined,
+                  ),
+                ),
+              },
+              {
+                key: 'vehiculos' as const,
+                label: 'Vehículos',
+                count: pool?.transportes.length ?? 0,
+                body: pool?.transportes.map((t) =>
+                  renderPoolCard(
+                    t.id,
+                    t.nombre,
+                    `${t.tipo}${
+                      t.choferes[0] ? ` · ${t.choferes.map((c) => c.username).join(', ')}` : ''
+                    }`,
+                    'vehiculo',
+                    t.id,
+                    t.areaIds.includes(selectedAreaId),
+                    t.areas.length
+                      ? `En: ${t.areas.map((a) => a.nombre).join(', ')}`
+                      : undefined,
+                  ),
+                ),
+              },
+              {
+                key: 'prestadores' as const,
+                label: 'Prestadores',
+                count: pool?.prestadores.length ?? 0,
+                body:
+                  (pool?.prestadores.length ?? 0) === 0 ? (
+                    <p className="coord-assign-empty">
+                      Todavía no hay prestadores. Admin los marca en Usuarios (rol Chofer +
+                      Prestador).
+                    </p>
+                  ) : (
+                    pool?.prestadores.map((c) =>
+                      renderPoolCard(
+                        c.id,
+                        c.username,
+                        c.transporte
+                          ? `Vehículo propio: ${c.transporte.nombre}`
+                          : 'Sin vehículo asignado',
+                        'prestador',
+                        c.id,
+                        c.areaIds.includes(selectedAreaId),
+                        c.areas.length
+                          ? `En: ${c.areas.map((a) => a.nombre).join(', ')}`
+                          : undefined,
+                      ),
+                    )
+                  ),
+              },
+              {
+                key: 'pasajeros' as const,
+                label: 'Pasajeros',
+                count: pool?.pasajeros.length ?? 0,
+                body: pool?.pasajeros.map((p) => {
+                  const inCurrent = p.areaIds.includes(selectedAreaId);
+                  return renderPoolCard(
+                    p.id,
+                    p.nombre,
+                    p.direccion,
+                    'pasajero',
+                    p.id,
+                    inCurrent,
+                    !inCurrent && p.areas.length
+                      ? `En: ${p.areas.map((a) => a.nombre).join(', ')}`
+                      : undefined,
+                    inCurrent ? 'used' : undefined,
+                  );
+                }),
+              },
+              {
+                key: 'destinos' as const,
+                label: 'Destinos',
+                count: pool?.destinos.length ?? 0,
+                body: pool?.destinos.map((d) =>
+                  renderPoolCard(
+                    d.id,
+                    d.nombre,
+                    `${d.domicilio} · ${d.area.nombre}`,
+                    'destino',
+                    d.id,
+                    d.areaId === selectedAreaId,
+                    d.areaId !== selectedAreaId ? `Área: ${d.area.nombre}` : undefined,
+                  ),
+                ),
+              },
+            ] as const
+          ).map((section) => (
+            <div key={section.key} className="coord-pool-acc">
+              <button
+                type="button"
+                className="coord-pool-acc__toggle"
+                aria-expanded={openAcc[section.key]}
+                onClick={() =>
+                  setOpenAcc((prev) => ({ ...prev, [section.key]: !prev[section.key] }))
+                }
+              >
+                <span>
+                  <span aria-hidden="true">{openAcc[section.key] ? '▼' : '▶'}</span>{' '}
+                  {section.label}
                 </span>
-                <div>
-                  <strong>Hay asignaciones no disponibles por disposición del Admin.</strong>
-                  <p>
-                    Siguen en el área, pero no se pueden usar en grillas nuevas hasta que el Admin
-                    los reactive.
-                    {unavailableCeladoras.length > 0 && (
-                      <>
-                        {' '}
-                        Celadoras: {unavailableCeladoras.join(', ')}.
-                      </>
-                    )}
-                    {unavailablePasajeros.length > 0 && (
-                      <>
-                        {' '}
-                        Pasajeros: {unavailablePasajeros.join(', ')}.
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-            )}
+                <span className="coord-assign-count">{section.count}</span>
+              </button>
+              {openAcc[section.key] && (
+                <div className="coord-pool-acc__body">{section.body}</div>
+              )}
+            </div>
+          ))}
+        </aside>
 
-
-
-            <div className="coord-assign-grid coord-assign-grid--2">
-              <div className="coord-assign-block">
+        <div className="coord-board__areas">
+          <div className="admin-tabs-shell coord-area-tabs">
+            <div className="admin-tabs" role="tablist" aria-label="Áreas">
+              {(pool?.areas ?? []).map((area) => (
                 <button
+                  key={area.id}
                   type="button"
-                  className="coord-assign-toggle"
-                  aria-expanded={openAssign.celadoras}
-                  onClick={() => toggleAssign('celadoras')}
+                  role="tab"
+                  aria-selected={selectedAreaId === area.id}
+                  className={`admin-tabs__btn${selectedAreaId === area.id ? ' is-active' : ''}`}
+                  onClick={() => setSelectedAreaId(area.id)}
                 >
-                  <span className="coord-assign-toggle__title">
-                    <span aria-hidden="true">{openAssign.celadoras ? '▼' : '▶'}</span>
-                    Celadoras
-                  </span>
-                  <span className="coord-assign-count">{detail.celadoras.length}</span>
+                  {area.nombre}
                 </button>
-                {openAssign.celadoras && (
-                  <div className="coord-assign-body">
-                    <div className="coord-assign-row">
-                      <select
-                        value={pickCeladora}
-                        onChange={(e) => setPickCeladora(e.target.value)}
-                        className="admin-inline-select"
-                      >
-                        <option value="">Elegir celadora</option>
-                        {options.celadoras
-                          .filter((c) => !assignedCeladoraIds.has(c.id))
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.username}
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--sm"
-                        disabled={!pickCeladora}
-                        onClick={() => {
-                          void assign({ action: 'add_celadora', userId: pickCeladora }).then(() =>
-                            setPickCeladora(''),
-                          );
-                        }}
-                      >
-                        Asignar
-                      </button>
-                    </div>
-                    <ul className="coord-chip-list coord-chip-list--scroll">
-                      {detail.celadoras.length === 0 ? (
-                        <li className="coord-assign-empty">Sin celadoras asignadas.</li>
-                      ) : (
-                        detail.celadoras.map(({ user }) => (
-                          <li
-                            key={user.id}
-                            className={`coord-chip${user.active ? '' : ' coord-chip--unavailable'}`}
-                          >
-                            <span>
-                              {user.username}
-                              {!user.active && (
-                                <small className="coord-chip__unavailable-note">
-                                  {' '}
-                                  — No disponible (Admin)
-                                </small>
-                              )}
-                            </span>
+              ))}
+            </div>
+
+            <div
+              className={`admin-tabs__panel coord-area-drop${dropHover ? ' is-drop' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDropHover(true);
+              }}
+              onDragLeave={() => setDropHover(false)}
+              onDrop={(e) => void handleDropOnArea(e)}
+            >
+              {!detail ? (
+                <p className="panel-card__desc" style={{ margin: 0 }}>
+                  {(pool?.areas.length ?? 0) === 0
+                    ? 'Todavía no hay áreas. Pedile a Admin que las cree.'
+                    : 'Seleccioná un área.'}
+                </p>
+              ) : (
+                <div className="coord-area-panel">
+                  <header className="coord-area-panel__head">
+                    <h2>{detail.nombre}</h2>
+                    <p className="panel-card__desc">
+                      Soltá recursos acá para asignarlos. Usá la ✕ para quitar.
+                    </p>
+                  </header>
+
+                  <section className="coord-area-section">
+                    <h3>Celadoras</h3>
+                    {detail.celadoras.length === 0 ? (
+                      <p className="coord-assign-empty">Sin celadoras. Arrastrá desde el pool.</p>
+                    ) : (
+                      <ul className="coord-area-chips">
+                        {detail.celadoras.map((c) => (
+                          <li key={c.user.id}>
+                            <span>{c.user.username}</span>
                             <button
                               type="button"
-                              className="coord-chip__remove"
+                              className="coord-chip-x"
+                              aria-label={`Quitar ${c.user.username}`}
+                              disabled={busy}
                               onClick={() =>
-                                void assign({ action: 'remove_celadora', userId: user.id })
+                                void assign({ action: 'remove_celadora', userId: c.user.id })
                               }
                             >
                               ×
                             </button>
                           </li>
-                        ))
-                      )}
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-
-
-              <div className="coord-assign-block">
-                <button
-                  type="button"
-                  className="coord-assign-toggle"
-                  aria-expanded={openAssign.transportes}
-                  onClick={() => toggleAssign('transportes')}
-                >
-                  <span className="coord-assign-toggle__title">
-                    <span aria-hidden="true">{openAssign.transportes ? '▼' : '▶'}</span>
-                    Transportes
-                  </span>
-                  <span className="coord-assign-count">{detail.transportes.length}</span>
-                </button>
-                {openAssign.transportes && (
-                  <div className="coord-assign-body">
-                    <div className="coord-assign-row">
-                      <select
-                        value={pickTransporte}
-                        onChange={(e) => setPickTransporte(e.target.value)}
-                        className="admin-inline-select"
-                      >
-                        <option value="">Elegir transporte</option>
-                        {options.transportes
-                          .filter((t) => !assignedTransporteIds.has(t.id))
-                          .map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.nombre} ({t.tipo})
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn--primary btn--sm"
-                        disabled={!pickTransporte}
-                        onClick={() => {
-                          void assign({
-                            action: 'add_transporte',
-                            transporteId: pickTransporte,
-                          }).then(() => setPickTransporte(''));
-                        }}
-                      >
-                        Asignar
-                      </button>
-                    </div>
-                    <ul className="coord-chip-list coord-chip-list--scroll">
-                      {detail.transportes.length === 0 ? (
-                        <li className="coord-assign-empty">Sin transportes asignados.</li>
-                      ) : (
-                        detail.transportes.map(({ transporte }) => (
-                          <li key={transporte.id} className="coord-chip coord-chip--block">
-                            <div className="coord-chip__main">
-                              <strong>
-                                {transporte.nombre} ({transporte.tipo})
-                              </strong>
-                              <button
-                                type="button"
-                                className="coord-chip__remove"
-                                onClick={() =>
-                                  void assign({
-                                    action: 'remove_transporte',
-                                    transporteId: transporte.id,
-                                  })
-                                }
-                              >
-                                ×
-                              </button>
-                            </div>
-                            <div className="coord-assign-row">
-                              <select
-                                className="admin-inline-select"
-                                defaultValue=""
-                                onChange={(e) => {
-                                  const userId = e.target.value;
-                                  if (!userId) return;
-                                  void assign({
-                                    action: 'set_transporte_celadora',
-                                    transporteId: transporte.id,
-                                    userId,
-                                  });
-                                  e.target.value = '';
-                                }}
-                              >
-                                <option value="">Asignar celadora al transporte</option>
-                                {detail.celadoras
-                                  .filter(
-                                    (c) =>
-                                      c.user.active &&
-                                      !transporte.celadoras.some(
-                                        (tc) => tc.user.id === c.user.id,
-                                      ),
-                                  )
-                                  .map(({ user }) => (
-                                    <option key={user.id} value={user.id}>
-                                      {user.username}
-                                    </option>
-                                  ))}
-                              </select>
-                            </div>
-                            {transporte.celadoras.length > 0 && (
-                              <ul className="coord-chip-list">
-                                {transporte.celadoras.map(({ user }) => (
-                                  <li
-                                    key={user.id}
-                                    className={`coord-chip${user.active ? '' : ' coord-chip--unavailable'}`}
-                                  >
-                                    <span>
-                                      {user.username}
-                                      {!user.active && (
-                                        <small className="coord-chip__unavailable-note">
-                                          {' '}
-                                          — No disponible (Admin)
-                                        </small>
-                                      )}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="coord-chip__remove"
-                                      onClick={() =>
-                                        void assign({
-                                          action: 'clear_transporte_celadora',
-                                          transporteId: transporte.id,
-                                          userId: user.id,
-                                        })
-                                      }
-                                    >
-                                      ×
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-
-
-            <div className="coord-pasajero-matrix">
-              <h3 className="coord-pasajero-matrix__title">Pasajeros por destino</h3>
-              <p className="panel-card__desc">
-                Seleccioná un destino a la derecha y después tocá pasajeros a la izquierda para
-                asignarlos. El color del pasajero coincide con el de su destino. Tocá de nuevo al
-                mismo destino para quitar la asignación.
-              </p>
-
-
-
-              <div className="coord-assign-row coord-pasajero-matrix__add">
-                <select
-                  value={pickPasajero}
-                  onChange={(e) => setPickPasajero(e.target.value)}
-                  className="admin-inline-select"
-                >
-                  <option value="">Agregar pasajero al área</option>
-                  {options.pasajeros
-                    .filter((p) => !assignedPasajeroIds.has(p.id))
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  type="button"
-                  className="btn btn--primary btn--sm"
-                  disabled={!pickPasajero}
-                  onClick={() => {
-                    void assign({ action: 'add_pasajero', pasajeroId: pickPasajero }).then(() =>
-                      setPickPasajero(''),
-                    );
-                  }}
-                >
-                  Agregar
-                </button>
-              </div>
-
-
-
-              <div className="coord-pasajero-matrix__cols">
-                <div className="coord-pasajero-matrix__col">
-                  <h4 className="coord-pasajero-matrix__col-title">
-                    Pasajeros
-                    {!selectedDestinoId && (
-                      <span className="coord-pasajero-matrix__hint"> · elegí un destino →</span>
+                        ))}
+                      </ul>
                     )}
-                  </h4>
-                  <ul className="coord-pasajero-matrix__list">
-                    {detail.pasajeros.length === 0 ? (
-                      <li className="coord-assign-empty">Sin pasajeros en el área.</li>
+                  </section>
+
+                  <section className="coord-area-section">
+                    <h3>Choferes / Prestadores</h3>
+                    {(detail.choferes?.length ?? 0) === 0 ? (
+                      <p className="coord-assign-empty">
+                        Sin choferes asignados al área (opcional; en la grilla se usa el del
+                        vehículo).
+                      </p>
                     ) : (
-                      detail.pasajeros.map(({ pasajero, destinoIds, destinos }) => {
-                        const isLinkedToSelected =
-                          !!selectedDestinoId && destinoIds.includes(selectedDestinoId);
-                        const primaryColor = destinoIds
-                          .map((id) => destinoColorById.get(id))
-                          .find(Boolean);
-                        const destinosLabel =
-                          destinos.length > 0
-                            ? destinos.map((d) => d.nombre).join(' · ')
-                            : 'Sin destino';
-                        return (
-                          <li key={pasajero.id}>
-                            <div
-                              className={`coord-pasajero-chip${pasajero.active ? '' : ' is-unavailable'}${isLinkedToSelected ? ' is-linked' : ''}${destinoIds.length === 0 ? ' is-unassigned' : ''}`}
-                              style={
-                                primaryColor
-                                  ? {
-                                      backgroundColor: `${primaryColor}22`,
-                                      borderColor: primaryColor,
-                                    }
-                                  : undefined
-                              }
-                            >
-                              <button
-                                type="button"
-                                className="coord-pasajero-chip__main"
-                                disabled={!pasajero.active}
-                                onClick={() => togglePasajeroDestino(pasajero.id)}
-                              >
-                                <span className="coord-pasajero-chip__swatches">
-                                  {destinoIds.length === 0 ? (
-                                    <span className="coord-pasajero-chip__swatch" />
-                                  ) : (
-                                    destinoIds.map((id) => (
-                                      <span
-                                        key={id}
-                                        className="coord-pasajero-chip__swatch"
-                                        style={{
-                                          background: destinoColorById.get(id) ?? '#cbd5e1',
-                                        }}
-                                      />
-                                    ))
-                                  )}
-                                </span>
-                                <span className="coord-pasajero-chip__text">
-                                  <strong>{pasajero.nombre}</strong>
-                                  <small>
-                                    {destinosLabel}
-                                    {!pasajero.active ? ' · No disponible' : ''}
-                                  </small>
-                                </span>
-                              </button>
-                              <button
-                                type="button"
-                                className="coord-chip__remove"
-                                title="Quitar del área"
-                                onClick={() =>
-                                  void assign({
-                                    action: 'remove_pasajero',
-                                    pasajeroId: pasajero.id,
-                                  })
-                                }
-                              >
-                                ×
-                              </button>
-                            </div>
-                          </li>
-                        );
-                      })
-                    )}
-                  </ul>
-                </div>
-
-
-
-                <div className="coord-pasajero-matrix__col">
-                  <h4 className="coord-pasajero-matrix__col-title">Destinos</h4>
-                  <ul className="coord-pasajero-matrix__list">
-                    {destinosAsignables.length === 0 ? (
-                      <li className="coord-assign-empty">
-                        Creá destinos del área (BASE LC no se usa para asignar pasajeros).
-                      </li>
-                    ) : (
-                      destinosAsignables.map((destino) => {
-                        const color = destinoColorById.get(destino.id)!;
-                        const active = selectedDestinoId === destino.id;
-                        const count = countPasajerosPorDestino(destino.id);
-                        return (
-                          <li key={destino.id}>
+                      <ul className="coord-area-chips">
+                        {detail.choferes!.map((c) => (
+                          <li key={c.user.id}>
+                            <span>
+                              {c.user.username}
+                              {c.user.isPrestador ? ' · Prestador' : ''}
+                            </span>
                             <button
                               type="button"
-                              className={`coord-destino-chip${active ? ' is-active' : ''}`}
-                              style={{
-                                backgroundColor: active ? `${color}33` : `${color}14`,
-                                borderColor: color,
-                              }}
+                              className="coord-chip-x"
+                              aria-label={`Quitar ${c.user.username}`}
+                              disabled={busy}
                               onClick={() =>
-                                setSelectedDestinoId((prev) =>
-                                  prev === destino.id ? null : destino.id,
-                                )
+                                void assign({ action: 'remove_chofer', userId: c.user.id })
                               }
                             >
-                              <span
-                                className="coord-destino-chip__swatch"
-                                style={{ background: color }}
-                              />
-                              <span className="coord-destino-chip__text">
-                                <strong>{destino.nombre}</strong>
-                                <small>
-                                  {destino.domicilio}
-                                  {count > 0 ? ` · ${count} pasajero${count === 1 ? '' : 's'}` : ''}
-                                </small>
-                              </span>
+                              ×
                             </button>
                           </li>
-                        );
-                      })
+                        ))}
+                      </ul>
                     )}
-                  </ul>
+                  </section>
+
+                  <section className="coord-area-section">
+                    <h3>Vehículos</h3>
+                    {detail.transportes.length === 0 ? (
+                      <p className="coord-assign-empty">Sin vehículos. Arrastrá desde el pool.</p>
+                    ) : (
+                      <ul className="coord-area-chips">
+                        {detail.transportes.map((t) => (
+                          <li key={t.transporte.id}>
+                            <span>
+                              {t.transporte.nombre} ({t.transporte.tipo})
+                              {t.transporte.choferes[0]
+                                ? ` · ${t.transporte.choferes.map((c) => c.username).join(', ')}`
+                                : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="coord-chip-x"
+                              aria-label={`Quitar ${t.transporte.nombre}`}
+                              disabled={busy}
+                              onClick={() =>
+                                void assign({
+                                  action: 'remove_transporte',
+                                  transporteId: t.transporte.id,
+                                })
+                              }
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section className="coord-pasajero-matrix">
+                    <h3 className="coord-pasajero-matrix__title">Destinos</h3>
+                    <p className="panel-card__desc">
+                      Seleccioná un destino y tocá pasajeros para vincularlos (colores). Un
+                      pasajero puede tener varios destinos.
+                    </p>
+                    <div className="coord-pasajero-matrix__cols">
+                      <div>
+                        <h4>Pasajeros</h4>
+                        {detail.pasajeros.length === 0 ? (
+                          <p className="coord-assign-empty">Arrastrá pasajeros al área.</p>
+                        ) : (
+                          <ul className="coord-pasajero-destino-list">
+                            {detail.pasajeros.map((p) => {
+                              const colors = p.destinoIds
+                                .map((id) => destinoColorById.get(id))
+                                .filter(Boolean) as string[];
+                              const primary = colors[0];
+                              return (
+                                <li key={p.pasajero.id}>
+                                  <button
+                                    type="button"
+                                    className={`coord-pasajero-destino${
+                                      !p.pasajero.active ? ' is-unavailable' : ''
+                                    }`}
+                                    style={
+                                      primary
+                                        ? {
+                                            borderColor: primary,
+                                            borderWidth: 2,
+                                            background: `${primary}28`,
+                                          }
+                                        : undefined
+                                    }
+                                    disabled={busy || !p.pasajero.active}
+                                    onClick={() => togglePasajeroDestino(p.pasajero.id)}
+                                  >
+                                    <span className="coord-pasajero-destino__info">
+                                      <strong>{p.pasajero.nombre}</strong>
+                                      {colors.length > 1 && (
+                                        <span className="coord-destino-dots" aria-hidden="true">
+                                          {colors.map((c) => (
+                                            <i
+                                              key={c}
+                                              style={{ background: c }}
+                                              className="coord-destino-dot"
+                                            />
+                                          ))}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="coord-chip-x"
+                                    aria-label={`Quitar ${p.pasajero.nombre}`}
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void assign({
+                                        action: 'remove_pasajero',
+                                        pasajeroId: p.pasajero.id,
+                                      })
+                                    }
+                                  >
+                                    ×
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <h4>Destinos</h4>
+                        {destinosAsignables.length === 0 ? (
+                          <p className="coord-assign-empty">
+                            Arrastrá destinos al área (o pedile a Admin que los cree).
+                          </p>
+                        ) : (
+                          <ul className="coord-destino-pick-list">
+                            {destinosAsignables.map((d) => {
+                              const color = destinoColorById.get(d.id);
+                              const active = selectedDestinoId === d.id;
+                              const count =
+                                detail.pasajeros.filter((p) => p.destinoIds.includes(d.id))
+                                  .length ?? 0;
+                              return (
+                                <li key={d.id}>
+                                  <button
+                                    type="button"
+                                    className={`coord-destino-pick${active ? ' is-active' : ''}`}
+                                    style={
+                                      color
+                                        ? {
+                                            borderColor: color,
+                                            borderWidth: 2,
+                                            background: active
+                                              ? `${color}33`
+                                              : `${color}22`,
+                                          }
+                                        : undefined
+                                    }
+                                    onClick={() =>
+                                      setSelectedDestinoId((cur) =>
+                                        cur === d.id ? null : d.id,
+                                      )
+                                    }
+                                  >
+                                    <i
+                                      className="coord-destino-dot"
+                                      style={{ background: color }}
+                                      aria-hidden="true"
+                                    />
+                                    <span>
+                                      <strong>{d.nombre}</strong>
+                                      <small>
+                                        {d.domicilio}
+                                        {count > 0 ? ` · ${count} pasajero(s)` : ''}
+                                      </small>
+                                    </span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </section>
                 </div>
-              </div>
+              )}
             </div>
-          </section>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
-

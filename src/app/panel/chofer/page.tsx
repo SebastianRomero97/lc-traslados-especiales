@@ -7,7 +7,7 @@ export default async function ChoferPanelPage() {
   const user = await requireRole('CHOFER');
 
   return (
-    <PanelShell user={user} title="Panel Chofer">
+    <PanelShell user={user}>
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>
@@ -18,7 +18,7 @@ export default async function ChoferPanelPage() {
       </section>
 
       <PublicacionesBanner />
-      <OperativoPanel rol="CHOFER" />
+      <OperativoPanel rol="CHOFER" isPrestador={Boolean(user.isPrestador)} />
     </PanelShell>
   );
 }

@@ -7,7 +7,7 @@ export default async function CeladoraPanelPage() {
   const user = await requireRole('CELADORA');
 
   return (
-    <PanelShell user={user} title="Panel Celadora">
+    <PanelShell user={user}>
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>

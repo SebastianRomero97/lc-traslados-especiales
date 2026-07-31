@@ -6,7 +6,7 @@ export default async function AdminPanelPage() {
   const user = await requireRole('ADMIN');
 
   return (
-    <PanelShell user={user} title="Panel Admin">
+    <PanelShell user={user}>
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>

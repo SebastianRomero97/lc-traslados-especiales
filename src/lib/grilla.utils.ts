@@ -301,3 +301,169 @@ export function buildGrillaWhatsAppText(params: {
 
   return lineas.join('\n');
 }
+
+/** Grupo de filtro UI (Hoy / Semana / Mes). */
+export type TipoGrupoItinerario = 'ingreso' | 'salida' | 'adaptacion' | 'especial';
+
+export const TIPOS_GRUPO: TipoGrupoItinerario[] = [
+  'ingreso',
+  'salida',
+  'adaptacion',
+  'especial',
+];
+
+export const TIPO_GRUPO_LABEL: Record<TipoGrupoItinerario, string> = {
+  ingreso: 'Ingreso',
+  salida: 'Salida',
+  adaptacion: 'Adaptación',
+  especial: 'Especial',
+};
+
+/** Color sólido del chip / borde del contenedor. */
+export const TIPO_GRUPO_COLOR: Record<TipoGrupoItinerario, string> = {
+  ingreso: '#16a34a',
+  salida: '#dc2626',
+  adaptacion: '#2563eb',
+  especial: '#7c3aed',
+};
+
+export function isTipoGrupoItinerario(value: string): value is TipoGrupoItinerario {
+  return (TIPOS_GRUPO as string[]).includes(value);
+}
+
+export function tiposDeGrupo(grupo: TipoGrupoItinerario): TipoItinerario[] {
+  switch (grupo) {
+    case 'ingreso':
+      return ['INGRESO'];
+    case 'salida':
+      return ['SALIDA'];
+    case 'adaptacion':
+      return ['ADAPTACION_INGRESO', 'ADAPTACION_SALIDA'];
+    case 'especial':
+      return ['ESPECIAL', 'ESPECIAL_INGRESO', 'ESPECIAL_SALIDA'];
+  }
+}
+
+export function grupoDeTipo(tipo: TipoItinerario | string): TipoGrupoItinerario {
+  if (tipo === 'SALIDA') return 'salida';
+  if (tipo.startsWith('ADAPTACION')) return 'adaptacion';
+  if (tipo.startsWith('ESPECIAL')) return 'especial';
+  return 'ingreso';
+}
+
+/** Tipo concreto por defecto al crear desde un chip de grupo. */
+export function tipoDefaultDeGrupo(grupo: TipoGrupoItinerario): TipoItinerario {
+  switch (grupo) {
+    case 'ingreso':
+      return 'INGRESO';
+    case 'salida':
+      return 'SALIDA';
+    case 'adaptacion':
+      return 'ADAPTACION_INGRESO';
+    case 'especial':
+      return 'ESPECIAL';
+  }
+}
+
+/** Lunes 00:00 UTC de la semana que contiene `ref` (YYYY-MM-DD o Date). */
+export function mondayOfWeek(ref: Date | string): string {
+  const key = typeof ref === 'string' ? ref.slice(0, 10) : ref.toISOString().slice(0, 10);
+  const d = new Date(`${key}T12:00:00.000Z`);
+  const day = d.getUTCDay(); // 0=dom … 1=lun
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Lun–Vie (5 fechas YYYY-MM-DD) a partir del lunes de la semana. */
+export function weekdaysMonFri(mondayKey: string): string[] {
+  const base = new Date(`${mondayKey}T12:00:00.000Z`);
+  return [0, 1, 2, 3, 4].map((i) => {
+    const d = new Date(base);
+    d.setUTCDate(base.getUTCDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+export function addDaysKey(fechaKey: string, days: number): string {
+  const d = new Date(`${fechaKey}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function shiftWeekMonday(mondayKey: string, weeks: number): string {
+  return addDaysKey(mondayKey, weeks * 7);
+}
+
+export function monthStartKey(year: number, monthIndex0: number): string {
+  const m = String(monthIndex0 + 1).padStart(2, '0');
+  return `${year}-${m}-01`;
+}
+
+export function daysInMonth(year: number, monthIndex0: number): number {
+  return new Date(Date.UTC(year, monthIndex0 + 1, 0)).getUTCDate();
+}
+
+export function labelDiaCorto(fechaKey: string): string {
+  const names = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const d = new Date(`${fechaKey}T12:00:00.000Z`);
+  return names[d.getUTCDay()] ?? '';
+}
+
+export function labelMesAnio(year: number, monthIndex0: number): string {
+  const names = [
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
+  ];
+  return `${names[monthIndex0] ?? ''} ${year}`;
+}
+
+export type ResourceConflictKind =
+  | 'chofer'
+  | 'prestador'
+  | 'celadora'
+  | 'vehiculo'
+  | 'pasajero';
+
+export type ResourceConflict = {
+  kind: ResourceConflictKind;
+  resourceId: string;
+  resourceLabel: string;
+  areaId: string;
+  areaNombre: string;
+  grillaId: string;
+  grillaNombre: string;
+};
+
+export function labelConflictKind(kind: ResourceConflictKind): string {
+  switch (kind) {
+    case 'chofer':
+      return 'chofer';
+    case 'prestador':
+      return 'prestador';
+    case 'celadora':
+      return 'celadora';
+    case 'vehiculo':
+      return 'vehículo';
+    case 'pasajero':
+      return 'pasajero';
+  }
+}
+
+export function formatConflictMessage(
+  conflict: ResourceConflict,
+  targetAreaNombre: string,
+): string {
+  return `Este ${labelConflictKind(conflict.kind)} (${conflict.resourceLabel}) ya está asignado en ${conflict.areaNombre}. ¿Desea cambiarlo y asignarlo en ${targetAreaNombre}?`;
+}
+

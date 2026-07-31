@@ -4,7 +4,7 @@ export const siteConfig: SiteConfig = {
   name: 'LC Traslados Especiales',
   brandHighlight: 'LC',
   brandName: 'Traslados Especiales',
-  logoSrc: '/logoLC-removebg-preview.png',
+  logoSrc: '/LOGOLC.png',
   tagline:
     'Traslados con contención y respeto para niños con discapacidad hacia sus centros de terapia y tratamiento.',
   description:

@@ -8,11 +8,14 @@ type Body = {
   action?:
     | 'add_celadora'
     | 'remove_celadora'
+    | 'add_chofer'
+    | 'remove_chofer'
     | 'add_transporte'
     | 'remove_transporte'
     | 'add_pasajero'
     | 'remove_pasajero'
     | 'set_pasajero_destino'
+    | 'set_destino_area'
     | 'set_transporte_celadora'
     | 'clear_transporte_celadora';
   userId?: string;
@@ -64,6 +67,34 @@ export async function POST(request: Request) {
         }
         await prisma.areaCeladora.deleteMany({ where: { areaId, userId } });
         return NextResponse.json({ message: 'Celadora removida del área.' });
+      }
+
+      case 'add_chofer': {
+        const userId = body.userId?.trim();
+        if (!userId) {
+          return NextResponse.json({ message: 'Falta userId.' }, { status: 400 });
+        }
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.roles.includes('CHOFER')) {
+          return NextResponse.json({ message: 'El chofer no es válido.' }, { status: 400 });
+        }
+        await prisma.areaChofer.upsert({
+          where: { areaId_userId: { areaId, userId } },
+          update: {},
+          create: { areaId, userId },
+        });
+        return NextResponse.json({
+          message: user.isPrestador ? 'Prestador asignado al área.' : 'Chofer asignado al área.',
+        });
+      }
+
+      case 'remove_chofer': {
+        const userId = body.userId?.trim();
+        if (!userId) {
+          return NextResponse.json({ message: 'Falta userId.' }, { status: 400 });
+        }
+        await prisma.areaChofer.deleteMany({ where: { areaId, userId } });
+        return NextResponse.json({ message: 'Chofer removido del área.' });
       }
 
       case 'add_transporte': {
@@ -175,6 +206,25 @@ export async function POST(request: Request) {
           data: { areaId, pasajeroId, destinoId },
         });
         return NextResponse.json({ message: 'Destino asignado al pasajero.' });
+      }
+
+      case 'set_destino_area': {
+        const destinoId = typeof body.destinoId === 'string' ? body.destinoId.trim() : '';
+        if (!destinoId) {
+          return NextResponse.json({ message: 'Falta destinoId.' }, { status: 400 });
+        }
+        const destino = await prisma.destino.findUnique({ where: { id: destinoId } });
+        if (!destino || !destino.active) {
+          return NextResponse.json({ message: 'El destino no es válido.' }, { status: 400 });
+        }
+        if (destino.areaId === areaId) {
+          return NextResponse.json({ message: 'El destino ya pertenece a esta área.' });
+        }
+        await prisma.destino.update({
+          where: { id: destinoId },
+          data: { areaId },
+        });
+        return NextResponse.json({ message: 'Destino movido al área.' });
       }
 
       case 'set_transporte_celadora': {

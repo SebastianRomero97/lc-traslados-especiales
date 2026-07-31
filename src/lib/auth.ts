@@ -28,6 +28,7 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
     id: user.id,
     username: user.username,
     roles: user.roles,
+    isPrestador: Boolean(user.isPrestador),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -56,6 +57,7 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
       id: payload.id,
       username: payload.username,
       roles,
+      isPrestador: Boolean(payload.isPrestador),
     };
   } catch {
     return null;

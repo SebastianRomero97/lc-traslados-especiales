@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       id: user.id,
       username: user.username,
       roles,
+      isPrestador: Boolean(user.isPrestador),
     };
 
     const token = await createSessionToken(sessionUser);

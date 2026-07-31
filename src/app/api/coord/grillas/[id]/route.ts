@@ -8,8 +8,15 @@ import {
   isTipoItinerario,
   normalizeAccion,
   type GrillaFilaInput,
+  type TipoItinerario,
 } from '@/lib/grilla.utils';
 import { filaCoordsData, syncCoordsToSources } from '@/lib/coords-sync';
+import {
+  applyForceReassign,
+  conflictsResponseBody,
+  findResourceConflicts,
+  parseFechaDay,
+} from '@/lib/grilla-conflict';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -83,7 +90,10 @@ export async function PATCH(request: Request, { params }: Params) {
   const { id } = await params;
 
   try {
-    const existing = await prisma.grilla.findUnique({ where: { id } });
+    const existing = await prisma.grilla.findUnique({
+      where: { id },
+      include: { area: { select: { id: true, nombre: true } } },
+    });
     if (!existing) {
       return NextResponse.json({ message: 'Grilla no encontrada.' }, { status: 404 });
     }
@@ -99,8 +109,10 @@ export async function PATCH(request: Request, { params }: Params) {
       celadoraId?: string | null;
       puntoEncuentroId?: string | null;
       filas?: GrillaFilaInput[];
+      forceReassign?: boolean;
     };
 
+    const forceReassign = Boolean(body.forceReassign);
     const conCeladora = body.conCeladora ?? existing.conCeladora;
     const celadoraId =
       body.celadoraId === undefined
@@ -124,11 +136,11 @@ export async function PATCH(request: Request, { params }: Params) {
         { status: 400 },
       );
     }
-    const tipoItinerario = tipoItinerarioRaw;
+    const tipoItinerario = tipoItinerarioRaw as TipoItinerario;
     const fecha =
       body.fecha === undefined
         ? existing.fecha
-        : new Date(`${body.fecha.trim()}T00:00:00.000Z`);
+        : parseFechaDay(body.fecha.trim());
 
     if (!transporteId) {
       return NextResponse.json({ message: 'Seleccioná un transporte.' }, { status: 400 });
@@ -171,7 +183,43 @@ export async function PATCH(request: Request, { params }: Params) {
       }
     }
 
+    let pasajeroIds: string[] = [];
+    if (body.filas) {
+      pasajeroIds = body.filas
+        .map((f) => f.pasajeroId?.trim())
+        .filter((pid): pid is string => Boolean(pid));
+    } else {
+      const existingFilas = await prisma.grillaFila.findMany({
+        where: { grillaId: id, pasajeroId: { not: null } },
+        select: { pasajeroId: true },
+      });
+      pasajeroIds = existingFilas
+        .map((f) => f.pasajeroId)
+        .filter((pid): pid is string => Boolean(pid));
+    }
+
+    const conflicts = await findResourceConflicts(prisma, {
+      fecha: parseFechaDay(fecha),
+      tipoItinerario,
+      areaId: existing.areaId,
+      areaNombre: existing.area.nombre,
+      excludeGrillaId: id,
+      transporteId,
+      choferId,
+      celadoraId: conCeladora ? celadoraId : null,
+      pasajeroIds,
+    });
+
+    if (conflicts.length > 0 && !forceReassign) {
+      return NextResponse.json(conflictsResponseBody(conflicts, existing.area.nombre), {
+        status: 409,
+      });
+    }
+
     const grilla = await prisma.$transaction(async (tx) => {
+      if (conflicts.length > 0 && forceReassign) {
+        await applyForceReassign(tx, conflicts);
+      }
       if (body.filas) {
         if (body.filas.length === 0) {
           throw new Error('EMPTY_FILAS');

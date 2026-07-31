@@ -16,6 +16,7 @@ export async function GET() {
       username: true,
       roles: true,
       active: true,
+      isPrestador: true,
       createdAt: true,
     },
   });
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
       password?: string;
       roles?: unknown;
       role?: string;
+      isPrestador?: boolean;
     };
 
     const username = body.username?.trim();
@@ -75,6 +77,7 @@ export async function POST(request: Request) {
     }
 
     const roles = rolesInput as Role[];
+    const isPrestador = roles.includes('CHOFER') && body.isPrestador === true;
 
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) {
@@ -90,6 +93,7 @@ export async function POST(request: Request) {
         username,
         passwordHash,
         roles,
+        isPrestador,
         active: true,
       },
       select: {
@@ -97,6 +101,7 @@ export async function POST(request: Request) {
         username: true,
         roles: true,
         active: true,
+        isPrestador: true,
         createdAt: true,
       },
     });

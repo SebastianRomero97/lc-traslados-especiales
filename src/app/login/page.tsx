@@ -1,8 +1,10 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
+import { siteConfig } from '@/config/site.config';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,6 +44,15 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        <div className="auth-card__logo">
+          <Image
+            src={siteConfig.logoSrc}
+            alt={siteConfig.name}
+            width={112}
+            height={112}
+            priority
+          />
+        </div>
         <p className="auth-card__tag">Acceso interno</p>
         <h1 className="auth-card__title">Iniciar sesión</h1>
         <p className="auth-card__text">Ingresá con el usuario que te asignó el administrador.</p>
