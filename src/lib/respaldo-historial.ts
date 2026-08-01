@@ -6,6 +6,7 @@ import {
   sentidoItinerario,
   type ModalidadItinerario,
 } from '@/lib/grilla.utils';
+import { labelTipoCierre } from '@/lib/grilla-estado';
 import {
   labelEstadoAsistenciaFicha,
   normalizeEstadoAsistenciaFicha,
@@ -30,9 +31,12 @@ export type RespaldoGrilla = {
   informeChoferCeladora: string | null;
   informeChoferVehiculo: string | null;
   combustibleNivel: string | null;
+  cierreTipo: string | null;
+  cierreNota: string | null;
+  cerradoPor: string | null;
+  cerradoAt: string | null;
   asistio: number;
   cancelo: number;
-  noSePresento: number;
   filas: {
     hora: string | null;
     direccion: string;
@@ -157,17 +161,24 @@ function buildAsistMap(g: RespaldoGrilla | null): AsistMap {
   return map;
 }
 
-/** Pasajeros únicos asignados en la grilla (filas con pasajero), ordenados por nombre. */
+/** Pasajeros únicos asignados en la grilla (con o sin pasajeroId), ordenados por nombre. */
 function pasajerosDeGrilla(g: RespaldoGrilla): string[] {
-  const seen = new Set<string>();
+  const seenId = new Set<string>();
+  const seenNombre = new Set<string>();
   const nombres: string[] = [];
   for (const f of g.filas) {
-    if (!f.pasajeroId) continue;
-    const key = f.pasajeroId;
-    if (seen.has(key)) continue;
-    seen.add(key);
     const nombre = f.pasajeroNombre.trim();
     if (!nombre) continue;
+    if (f.pasajeroId) {
+      if (seenId.has(f.pasajeroId)) continue;
+      seenId.add(f.pasajeroId);
+      seenNombre.add(nombre.toLowerCase());
+      nombres.push(nombre);
+      continue;
+    }
+    const key = nombre.toLowerCase();
+    if (seenNombre.has(key)) continue;
+    seenNombre.add(key);
     nombres.push(nombre);
   }
   return nombres.sort((a, b) => a.localeCompare(b, 'es'));
@@ -218,6 +229,31 @@ function renderRecorridoBlock(
         <span><strong>Nombre:</strong> ${escapeHtml(jornada.nombre)}</span>
         <span><strong>Responsables:</strong> ${escapeHtml(responsablesDe(g))}</span>
       </div>
+      ${
+        labelTipoCierre(g.cierreTipo) &&
+        (g.cierreTipo === 'FORZADO_ADMIN' || g.cierreTipo === 'INTERRUMPIDO')
+          ? `<div class="bar bar--meta">
+        <span><strong>Cierre:</strong> ${escapeHtml(labelTipoCierre(g.cierreTipo) ?? '')}</span>
+        ${
+          g.cerradoPor
+            ? `<span><strong>Por:</strong> ${escapeHtml(g.cerradoPor)}</span>`
+            : ''
+        }
+        ${
+          g.cerradoAt
+            ? `<span><strong>Cuando:</strong> ${escapeHtml(
+                new Date(g.cerradoAt).toLocaleString('es-AR'),
+              )}</span>`
+            : ''
+        }
+        ${
+          g.cierreNota
+            ? `<span><strong>Observación:</strong> ${escapeHtml(g.cierreNota)}</span>`
+            : ''
+        }
+      </div>`
+          : ''
+      }
       <table>
         <thead>
           <tr>
@@ -245,11 +281,13 @@ export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
     'Duracion celadora (min)',
     'Asistio',
     'Cancelo',
-    'No se presento',
     'Combustible',
     'Informe chofer',
     'Informe celadora',
     'Nota',
+    'Cierre',
+    'Cierre por',
+    'Observacion cierre',
   ];
   const lines = [header.map(csvEscape).join(',')];
   for (const g of grillas) {
@@ -267,11 +305,13 @@ export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
         g.celadoraMinutos ?? '',
         g.asistio,
         g.cancelo,
-        g.noSePresento,
         g.combustibleNivel ?? '',
         g.informeChofer ?? '',
         g.informeCeladora ?? '',
         g.nota ?? '',
+        labelTipoCierre(g.cierreTipo) ?? '',
+        g.cerradoPor ?? '',
+        g.cierreNota ?? '',
       ]
         .map(csvEscape)
         .join(','),

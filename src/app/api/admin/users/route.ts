@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 import { isValidAssignableRoles, type Role } from '@/lib/roles';
 import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
+import { validatePasswordPlain } from '@/lib/password';
 
 export async function GET() {
   const auth = await requireAdminApi();
@@ -59,11 +60,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 4) {
-      return NextResponse.json(
-        { message: 'La contraseña debe tener al menos 4 caracteres.' },
-        { status: 400 },
-      );
+    const pwdError = validatePasswordPlain(password);
+    if (pwdError) {
+      return NextResponse.json({ message: pwdError }, { status: 400 });
     }
 
     if (!isValidAssignableRoles(rolesInput)) {

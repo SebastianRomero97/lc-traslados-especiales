@@ -1,23 +1,23 @@
-export type Role = 'ADMIN' | 'COORDINADORA' | 'CELADORA' | 'CHOFER';
+export type Role = 'ADMIN' | 'ADMINISTRACION' | 'CELADORA' | 'CHOFER';
 
-export const ASSIGNABLE_ROLES: Role[] = ['COORDINADORA', 'CELADORA', 'CHOFER'];
+export const ASSIGNABLE_ROLES: Role[] = ['ADMINISTRACION', 'CELADORA', 'CHOFER'];
 
 export const ROLE_PANEL_PATH: Record<Role, string> = {
   ADMIN: '/panel/admin',
-  COORDINADORA: '/panel/coordinadora',
+  ADMINISTRACION: '/panel/administracion',
   CELADORA: '/panel/celadora',
   CHOFER: '/panel/chofer',
 };
 
 export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: 'Admin',
-  COORDINADORA: 'Administración',
+  ADMINISTRACION: 'Administración',
   CELADORA: 'Celadora',
   CHOFER: 'Chofer',
 };
 
 /** Prioridad de panel por defecto tras login */
-const DEFAULT_PANEL_ORDER: Role[] = ['ADMIN', 'COORDINADORA', 'CELADORA', 'CHOFER'];
+const DEFAULT_PANEL_ORDER: Role[] = ['ADMIN', 'ADMINISTRACION', 'CELADORA', 'CHOFER'];
 
 export type SessionUser = {
   id: string;
@@ -52,11 +52,11 @@ export function accessiblePanelsFor(user: {
   roles: Role[];
 }): { role: Role; path: string; label: string }[] {
   const panels = panelPathsFor(user);
-  if (hasRole(user, 'ADMIN') && !panels.some((p) => p.role === 'COORDINADORA')) {
+  if (hasRole(user, 'ADMIN') && !panels.some((p) => p.role === 'ADMINISTRACION')) {
     panels.push({
-      role: 'COORDINADORA',
-      path: ROLE_PANEL_PATH.COORDINADORA,
-      label: ROLE_LABEL.COORDINADORA,
+      role: 'ADMINISTRACION',
+      path: ROLE_PANEL_PATH.ADMINISTRACION,
+      label: ROLE_LABEL.ADMINISTRACION,
     });
   }
   return panels;
@@ -82,7 +82,7 @@ export function isValidAssignableRoles(roles: unknown): roles is Role[] {
 export function userListGroupRank(roles: Role[]): number {
   if (roles.includes('ADMIN')) return 0;
   if (roles.length > 1) return 2;
-  if (roles.includes('COORDINADORA')) return 1;
+  if (roles.includes('ADMINISTRACION')) return 1;
   if (roles.includes('CELADORA')) return 3;
   if (roles.includes('CHOFER')) return 4;
   return 5;
@@ -96,4 +96,3 @@ export function compareUsersForAdminList(
   if (rankDiff !== 0) return rankDiff;
   return a.username.localeCompare(b.username, 'es', { sensitivity: 'base' });
 }
-

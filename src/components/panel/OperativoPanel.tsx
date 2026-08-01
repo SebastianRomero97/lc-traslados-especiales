@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
-import { usePanelPopup } from '@/components/panel/PanelPopup';
 import { ChoferVehiculoSection } from '@/components/panel/ChoferVehiculoSection';
+import { PasajeroContactoModal } from '@/components/panel/PasajeroContactoModal';
+import { usePanelPopup } from '@/components/panel/PanelPopup';
 import {
   buildGrillaTitulo,
   formatAccionFila,
@@ -35,6 +36,8 @@ type GrillaOperativa = {
   tipoItinerario: string;
   fecha: string;
   nota: string | null;
+  estado?: string;
+  cierreTipo?: string | null;
   conCeladora: boolean;
   choferInicioAt: string | null;
   choferFinAt: string | null;
@@ -75,6 +78,7 @@ type GrillaOperativa = {
 };
 
 function isJornadaCerradaGrilla(g: GrillaOperativa, rol: 'CELADORA' | 'CHOFER'): boolean {
+  if (g.estado === 'FINALIZADA' || g.cierreTipo) return true;
   if (rol === 'CELADORA') return Boolean(g.informeCeladora?.trim());
   return Boolean(g.informeChofer?.trim() || g.combustibleNivel);
 }
@@ -95,6 +99,10 @@ export function OperativoPanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [motivos, setMotivos] = useState<Record<string, string>>({});
+  const [fichaPasajero, setFichaPasajero] = useState<{
+    id: string;
+    nombre: string;
+  } | null>(null);
   const [informe, setInforme] = useState('');
   const [choferForm, setChoferForm] = useState({
     celadora: '',
@@ -102,13 +110,15 @@ export function OperativoPanel({
     combustible: '' as '' | NivelCombustible,
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const response = await fetch(`/api/operativo/grillas?rol=${rol}`);
       const body = await response.json();
       if (!response.ok) {
-        popup.error(body.message ?? 'No se pudieron cargar las grillas.');
+        if (!opts?.silent) {
+          popup.error(body.message ?? 'No se pudieron cargar las grillas.');
+        }
         return;
       }
       const list = body.data as GrillaOperativa[];
@@ -119,15 +129,32 @@ export function OperativoPanel({
         return activas[0]?.id ?? list[0]?.id ?? null;
       });
     } catch {
-      popup.error('Error de conexión al cargar grillas.');
+      if (!opts?.silent) {
+        popup.error('Error de conexión al cargar grillas.');
+      }
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rol]);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Refresco periódico para enterarse de cierres Admin / cambios de estado.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void load({ silent: true });
+    }, 30_000);
+    const onFocus = () => {
+      void load({ silent: true });
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [load]);
 
   const selected = useMemo(
@@ -253,7 +280,6 @@ export function OperativoPanel({
               informeChoferCeladora: selected.conCeladora ? choferForm.celadora : '',
               informeChoferVehiculo: choferForm.vehiculo,
               combustibleNivel: isPrestador ? null : choferForm.combustible,
-              isPrestador,
             };
 
       const response = await fetch(`/api/operativo/grillas/${selected.id}/informe`, {
@@ -346,7 +372,7 @@ export function OperativoPanel({
 
         <div className="admin-tabs__panel" role="tabpanel">
       {seccion === 'vehiculo' && rol === 'CHOFER' ? (
-        <ChoferVehiculoSection />
+        <ChoferVehiculoSection isPrestador={isPrestador} />
       ) : loading ? (
         <p className="panel-card__desc">Cargando grillas asignadas...</p>
       ) : grillasSeccion.length === 0 ? (
@@ -537,7 +563,22 @@ export function OperativoPanel({
                                 <span className="operativo-item-tipo">
                                   {esDestino ? 'Destino' : 'Pasajero'}
                                 </span>
-                                <strong>{keyNombre || '—'}</strong>
+                                {!esDestino && f.pasajeroId ? (
+                                  <button
+                                    type="button"
+                                    className="operativo-pasajero-link"
+                                    onClick={() =>
+                                      setFichaPasajero({
+                                        id: f.pasajeroId!,
+                                        nombre: keyNombre || 'Pasajero',
+                                      })
+                                    }
+                                  >
+                                    {keyNombre || '—'}
+                                  </button>
+                                ) : (
+                                  <strong>{keyNombre || '—'}</strong>
+                                )}
                                 <span className="operativo-ruta-item__accion">
                                   {f.accion === 'SUBE'
                                     ? 'Sube'
@@ -768,7 +809,22 @@ export function OperativoPanel({
                                   <span className="operativo-item-tipo">
                                     {item.tipo === 'destino' ? 'Destino' : 'Pasajero'}
                                   </span>
-                                  <strong>{item.pasajeroNombre}</strong>
+                                  {item.tipo === 'pasajero' && item.pasajeroId ? (
+                                    <button
+                                      type="button"
+                                      className="operativo-pasajero-link"
+                                      onClick={() =>
+                                        setFichaPasajero({
+                                          id: item.pasajeroId!,
+                                          nombre: item.pasajeroNombre,
+                                        })
+                                      }
+                                    >
+                                      {item.pasajeroNombre}
+                                    </button>
+                                  ) : (
+                                    <strong>{item.pasajeroNombre}</strong>
+                                  )}
                                   {actual && (
                                     <span className="operativo-asistencia-estado">
                                       {' '}
@@ -780,9 +836,7 @@ export function OperativoPanel({
                                   )}
                                 </div>
                                 <div className="admin-actions">
-                                  {(
-                                    ['ASISTIO', 'CANCELO', 'NO_SE_PRESENTO'] as EstadoAsistencia[]
-                                  ).map((estado) => (
+                                  {(['ASISTIO', 'CANCELO'] as EstadoAsistencia[]).map((estado) => (
                                     <button
                                       key={estado}
                                       type="button"
@@ -978,6 +1032,15 @@ export function OperativoPanel({
       )}
         </div>
       </div>
+
+      {fichaPasajero && selected && (
+        <PasajeroContactoModal
+          grillaId={selected.id}
+          pasajeroId={fichaPasajero.id}
+          pasajeroNombre={fichaPasajero.nombre}
+          onClose={() => setFichaPasajero(null)}
+        />
+      )}
     </div>
   );
 }

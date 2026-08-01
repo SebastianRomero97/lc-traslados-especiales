@@ -27,7 +27,7 @@ type CeladoraDetail = {
     nota: string | null;
     informe: string | null;
     duracionMinutos: number | null;
-    asistencias: { asistio: number; cancelo: number; noSePresento: number };
+    asistencias: { asistio: number; cancelo: number };
   }[];
   porRuta: {
     transporteId: string;
@@ -404,8 +404,7 @@ function CeladoraDetalleView({ detalle }: { detalle: CeladoraDetail }) {
                   </span>
                 </div>
                 <p className="informe-historial__stats">
-                  Asistió {h.asistencias.asistio} · Canceló {h.asistencias.cancelo} · No se
-                  presentó {h.asistencias.noSePresento}
+                  Asistió {h.asistencias.asistio} · Canceló {h.asistencias.cancelo}
                 </p>
                 {h.nota && <p className="informe-historial__nota">Nota grilla: {h.nota}</p>}
                 <blockquote>{h.informe}</blockquote>

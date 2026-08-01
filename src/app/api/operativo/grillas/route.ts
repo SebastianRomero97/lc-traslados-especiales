@@ -26,7 +26,10 @@ export async function GET(request: Request) {
   }
 
   const grillas = await prisma.grilla.findMany({
-    where: { OR: or },
+    where: {
+      OR: or,
+      estado: { in: ['APROBADA', 'EN_CURSO', 'FINALIZADA'] },
+    },
     include: grillaInclude,
     orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
     take: 40,

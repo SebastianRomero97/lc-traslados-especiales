@@ -27,13 +27,13 @@ function daysAgoInput(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Listado + export CSV/HTML de historiales (Admin y Coordinadora). */
+/** Listado + export CSV/HTML de historiales (Admin y Administración). */
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ message: 'No autenticado.' }, { status: 401 });
   }
-  if (!hasAnyRole(session, ['ADMIN', 'COORDINADORA'])) {
+  if (!hasAnyRole(session, ['ADMIN', 'ADMINISTRACION'])) {
     return NextResponse.json({ message: 'No autorizado.' }, { status: 403 });
   }
 
@@ -103,10 +103,14 @@ export async function GET(request: Request) {
         informeChoferCeladora: true,
         informeChoferVehiculo: true,
         combustibleNivel: true,
+        cierreTipo: true,
+        cierreNota: true,
+        cerradoAt: true,
         area: { select: { nombre: true } },
         transporte: { select: { nombre: true, tipo: true } },
         chofer: { select: { username: true } },
         celadora: { select: { username: true } },
+        cerradoPor: { select: { username: true } },
         filas: {
           orderBy: { orden: 'asc' },
           select: {
@@ -134,11 +138,9 @@ export async function GET(request: Request) {
     const grillas: RespaldoGrilla[] = grillasDb.map((g) => {
       let asistio = 0;
       let cancelo = 0;
-      let noSePresento = 0;
       for (const a of g.asistencias) {
         if (a.estado === 'ASISTIO') asistio += 1;
-        else if (a.estado === 'CANCELO') cancelo += 1;
-        else noSePresento += 1;
+        else cancelo += 1;
       }
       return {
         id: g.id,
@@ -159,13 +161,16 @@ export async function GET(request: Request) {
         informeChoferCeladora: g.informeChoferCeladora,
         informeChoferVehiculo: g.informeChoferVehiculo,
         combustibleNivel: g.combustibleNivel,
+        cierreTipo: g.cierreTipo,
+        cierreNota: g.cierreNota,
+        cerradoPor: g.cerradoPor?.username ?? null,
+        cerradoAt: g.cerradoAt?.toISOString() ?? null,
         asistio,
         cancelo,
-        noSePresento,
         filas: g.filas,
         asistencias: g.asistencias.map((a) => ({
           pasajeroNombre: a.pasajeroNombre,
-          estado: a.estado,
+          estado: a.estado === 'ASISTIO' ? 'ASISTIO' : 'CANCELO',
           motivoCancelacion: a.motivoCancelacion,
         })),
       };

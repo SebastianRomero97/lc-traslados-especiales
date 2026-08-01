@@ -33,9 +33,10 @@ type Novedad = {
   updatedAt: string;
 };
 
-export function ChoferVehiculoSection() {
+export function ChoferVehiculoSection({ isPrestador = false }: { isPrestador?: boolean }) {
   const popup = usePanelPopup();
   const [transporte, setTransporte] = useState<Transporte | null>(null);
+  const [fuente, setFuente] = useState<'asignado' | 'grilla' | null>(null);
   const [novedades, setNovedades] = useState<Novedad[]>([]);
   const [loading, setLoading] = useState(true);
   const [mensaje, setMensaje] = useState('');
@@ -51,6 +52,7 @@ export function ChoferVehiculoSection() {
         return;
       }
       setTransporte(body.data.transporte as Transporte | null);
+      setFuente((body.data.fuente as 'asignado' | 'grilla' | null) ?? null);
       setNovedades(body.data.novedades as Novedad[]);
     } catch {
       popup.error('Error de conexión al cargar el vehículo.');
@@ -105,11 +107,17 @@ export function ChoferVehiculoSection() {
         <h2>Vehículo asignado</h2>
         {!transporte ? (
           <p className="panel-card__desc">
-            Todavía no tenés un vehículo asignado. Pedile al Admin que te asigne uno en la pestaña
-            Choferes.
+            {isPrestador
+              ? 'Como prestador usás vehículo propio. Cuando tengas una grilla del día, vas a ver acá los datos del vehículo del recorrido para consultar y reportar novedades.'
+              : 'Todavía no tenés un vehículo asignado. Pedile al Admin que te asigne uno en la pestaña Choferes.'}
           </p>
         ) : (
           <>
+            {fuente === 'grilla' ? (
+              <p className="panel-card__desc">
+                Datos del vehículo de tu grilla de hoy (prestador / vehículo propio del recorrido).
+              </p>
+            ) : null}
             <dl className="chofer-vehiculo__detalle">
               <div>
                 <dt>Nombre</dt>

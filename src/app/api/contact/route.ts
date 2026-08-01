@@ -3,15 +3,24 @@ import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
 import { institutionOptions } from '@/data/landing.data';
 import { formatContactMessage } from '@/lib/contact.utils';
+import { clientIpFromRequest, consumeRateLimit } from '@/lib/rate-limit';
 import type { ApiResponse, ContactFormData, ContactSubmission } from '@/types';
 
 const CONTACT_TO_EMAIL = process.env.CONTACT_TO_EMAIL ?? 'seba97bass@gmail.com';
 const RESEND_FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL ?? 'LC Traslados Especiales <onboarding@resend.dev>';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function buildEmailHtml(data: ContactFormData) {
   const body = formatContactMessage({ ...data, institutionOptions });
-  return `<h2>Nueva consulta desde la web</h2><pre style="font-family:sans-serif;white-space:pre-wrap">${body}</pre>`;
+  return `<h2>Nueva consulta desde la web</h2><pre style="font-family:sans-serif;white-space:pre-wrap">${escapeHtml(body)}</pre>`;
 }
 
 async function sendViaGmail(data: ContactFormData, subject: string, html: string) {
@@ -54,7 +63,33 @@ async function sendViaResend(data: ContactFormData, subject: string, html: strin
 }
 
 export async function POST(request: Request) {
+  // Contacto público deshabilitado por defecto (landing sin sección Contacto).
+  if (process.env.CONTACT_ENABLED !== 'true') {
+    return NextResponse.json(
+      {
+        message:
+          'El formulario de contacto no está disponible por ahora. Escribinos por WhatsApp.',
+      },
+      { status: 503 },
+    );
+  }
+
   try {
+    const ip = clientIpFromRequest(request);
+    const limited = consumeRateLimit(`contact:${ip}`, {
+      limit: 5,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (!limited.ok) {
+      return NextResponse.json(
+        { message: `Demasiados envíos. Probá en ${limited.retryAfterSec} segundos.` },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(limited.retryAfterSec) },
+        },
+      );
+    }
+
     const data = (await request.json()) as ContactFormData;
 
     if (!data.nombre?.trim() || !data.telefono?.trim() || !data.obraSocial?.trim()) {
@@ -78,7 +113,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const subject = `Nueva consulta — ${data.nombre.trim()}`;
+    const subject = `Nueva consulta — ${data.nombre.trim().slice(0, 80)}`;
     const html = buildEmailHtml(data);
 
     const sentWithGmail = await sendViaGmail(data, subject, html);
@@ -86,7 +121,7 @@ export async function POST(request: Request) {
 
     if (!sentWithGmail && !sentWithResend) {
       console.error(
-        '[API /contact] Email no configurado. Agregá RESEND_API_KEY, GMAIL_USER/GMAIL_APP_PASSWORD o NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY en Vercel.',
+        '[API /contact] Email no configurado. Agregá RESEND_API_KEY o GMAIL_USER/GMAIL_APP_PASSWORD.',
       );
       return NextResponse.json(
         {

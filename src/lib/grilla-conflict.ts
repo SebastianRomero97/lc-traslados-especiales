@@ -7,6 +7,7 @@ import {
   type TipoGrupoItinerario,
   type TipoItinerario,
 } from '@/lib/grilla.utils';
+import { grillaBloqueadaOperativa, type EstadoGrilla } from '@/lib/grilla-estado';
 
 type Db = {
   grilla: Prisma.TransactionClient['grilla'];
@@ -25,6 +26,8 @@ type ConflictInput = {
   pasajeroIds: string[];
 };
 
+const KINDS_NO_AUTO: ResourceConflict['kind'][] = ['vehiculo', 'chofer', 'prestador'];
+
 export async function findResourceConflicts(
   db: Db,
   input: ConflictInput,
@@ -40,11 +43,14 @@ export async function findResourceConflicts(
     where: {
       fecha: { gte: dayStart, lt: dayEnd },
       tipoItinerario: { in: tipos },
+      // Finalizadas liberan recursos: se puede armar otra grilla del mismo grupo ese día.
+      estado: { not: 'FINALIZADA' },
       ...(input.excludeGrillaId ? { id: { not: input.excludeGrillaId } } : {}),
     },
     select: {
       id: true,
       nombre: true,
+      estado: true,
       areaId: true,
       area: { select: { id: true, nombre: true } },
       transporteId: true,
@@ -84,6 +90,7 @@ export async function findResourceConflicts(
         areaNombre: g.area.nombre,
         grillaId: g.id,
         grillaNombre: g.nombre,
+        estado: g.estado as EstadoGrilla,
       });
     }
     if (g.choferId === input.choferId) {
@@ -95,6 +102,7 @@ export async function findResourceConflicts(
         areaNombre: g.area.nombre,
         grillaId: g.id,
         grillaNombre: g.nombre,
+        estado: g.estado as EstadoGrilla,
       });
     }
     if (input.celadoraId && g.celadoraId === input.celadoraId && g.celadora) {
@@ -106,6 +114,7 @@ export async function findResourceConflicts(
         areaNombre: g.area.nombre,
         grillaId: g.id,
         grillaNombre: g.nombre,
+        estado: g.estado as EstadoGrilla,
       });
     }
     for (const fila of g.filas) {
@@ -118,6 +127,7 @@ export async function findResourceConflicts(
         areaNombre: g.area.nombre,
         grillaId: g.id,
         grillaNombre: g.nombre,
+        estado: g.estado as EstadoGrilla,
       });
     }
   }
@@ -125,10 +135,21 @@ export async function findResourceConflicts(
   return conflicts;
 }
 
-/** Limpia celadoras y filas de pasajeros conflictivos (chofer/vehículo son obligatorios en la otra grilla). */
+/** Conflictos que no se pueden resolver con force (bloqueo operativo o chofer/vehículo). */
+export function conflictsNotAutoResolvable(conflicts: ResourceConflict[]): ResourceConflict[] {
+  return conflicts.filter(
+    (c) =>
+      (c.estado != null && grillaBloqueadaOperativa(c.estado)) ||
+      KINDS_NO_AUTO.includes(c.kind),
+  );
+}
+
+/** Solo limpia celadora / filas de pasajeros en grillas no bloqueadas. */
 export async function applyForceReassign(db: Db, conflicts: ResourceConflict[]): Promise<void> {
   const byGrilla = new Map<string, ResourceConflict[]>();
   for (const c of conflicts) {
+    if (c.estado != null && grillaBloqueadaOperativa(c.estado)) continue;
+    if (KINDS_NO_AUTO.includes(c.kind)) continue;
     const list = byGrilla.get(c.grillaId) ?? [];
     list.push(c);
     byGrilla.set(c.grillaId, list);
@@ -141,7 +162,7 @@ export async function applyForceReassign(db: Db, conflicts: ResourceConflict[]):
     if (hasCeladora) {
       await db.grilla.update({
         where: { id: grillaId },
-        data: { celadoraId: null, conCeladora: false, puntoEncuentroId: null },
+        data: { celadoraId: null, puntoEncuentroId: null },
       });
     }
     if (pasajeroIds.length > 0) {
@@ -156,10 +177,18 @@ export function conflictsResponseBody(
   conflicts: ResourceConflict[],
   targetAreaNombre: string,
 ) {
-  const first = conflicts[0];
-  const message = first
+  const blocked = conflictsNotAutoResolvable(conflicts);
+  const first = blocked[0] ?? conflicts[0];
+  let message = first
     ? formatConflictMessage(first, targetAreaNombre)
     : 'Hay recursos ya asignados en otra grilla.';
+
+  if (blocked.some((c) => c.estado === 'EN_CURSO')) {
+    message = `${message} Esa grilla ya está en curso y no se puede reasignar.`;
+  } else if (blocked.some((c) => KINDS_NO_AUTO.includes(c.kind))) {
+    message = `${message} Chofer/vehículo no se reasignan solos: editá o eliminá la otra grilla primero.`;
+  }
+
   return {
     code: 'RESOURCE_CONFLICT' as const,
     message:
@@ -167,6 +196,7 @@ export function conflictsResponseBody(
         ? `${message} (y ${conflicts.length - 1} conflicto${conflicts.length > 2 ? 's' : ''} más)`
         : message,
     conflicts,
+    canForce: blocked.length === 0,
   };
 }
 

@@ -54,7 +54,7 @@ function rangoFromParams(searchParams: URLSearchParams): Rango {
 }
 
 /**
- * Informe operativo (Admin + Coordinadora):
+ * Informe operativo (Admin + Administración):
  * - sin userId: listado de celadoras y choferes con cantidad de informes en el período
  * - con userId + tipo=celadora|chofer: historial + métricas por ruta (+ destinos / combustible)
  */
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ message: 'No autenticado.' }, { status: 401 });
   }
-  if (!hasAnyRole(session, ['ADMIN', 'COORDINADORA'])) {
+  if (!hasAnyRole(session, ['ADMIN', 'ADMINISTRACION'])) {
     return NextResponse.json({ message: 'No autorizado.' }, { status: 403 });
   }
 
@@ -233,7 +233,6 @@ async function buildCeladoraDetail(userId: string, rango: Rango) {
     const duracion = durationMinutes(g.celadoraInicioAt, g.celadoraFinAt);
     let asistio = 0;
     let cancelo = 0;
-    let noSePresento = 0;
 
     for (const a of g.asistencias) {
       if (a.estado === 'ASISTIO') {
@@ -250,10 +249,8 @@ async function buildCeladoraDetail(userId: string, rango: Rango) {
             porDestinoMap.set(dest.id, entry);
           }
         }
-      } else if (a.estado === 'CANCELO') {
-        cancelo += 1;
       } else {
-        noSePresento += 1;
+        cancelo += 1;
       }
     }
 
@@ -280,7 +277,7 @@ async function buildCeladoraDetail(userId: string, rango: Rango) {
       inicioAt: g.celadoraInicioAt,
       finAt: g.celadoraFinAt,
       duracionMinutos: duracion,
-      asistencias: { asistio, cancelo, noSePresento },
+      asistencias: { asistio, cancelo },
     };
   });
 

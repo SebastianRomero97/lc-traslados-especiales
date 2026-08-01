@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { hash } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 import { describeCaughtError } from '@/lib/api-errors';
+import { validatePasswordPlain } from '@/lib/password';
 import { isValidAssignableRoles, type Role } from '@/lib/roles';
 
 type Params = { params: Promise<{ id: string }> };
@@ -27,6 +29,7 @@ export async function PATCH(request: Request, { params }: Params) {
       active?: boolean;
       roles?: unknown;
       isPrestador?: boolean;
+      password?: string;
     };
 
     const data: {
@@ -35,6 +38,7 @@ export async function PATCH(request: Request, { params }: Params) {
       roles?: Role[];
       transporteId?: null;
       isPrestador?: boolean;
+      passwordHash?: string;
     } = {};
 
     if (typeof body.username === 'string') {
@@ -64,6 +68,16 @@ export async function PATCH(request: Request, { params }: Params) {
           { status: 400 },
         );
       }
+      if (
+        existing.roles.includes('ADMIN') &&
+        id !== auth.user.id &&
+        body.active === false
+      ) {
+        return NextResponse.json(
+          { message: 'No podés desactivar a otro Admin.' },
+          { status: 400 },
+        );
+      }
       data.active = body.active;
     }
 
@@ -84,7 +98,6 @@ export async function PATCH(request: Request, { params }: Params) {
         );
       }
       data.roles = body.roles;
-      // Si deja de ser chofer, liberar vehículo asignado
       if (!body.roles.includes('CHOFER') && existing.transporteId) {
         data.transporteId = null;
       }
@@ -96,6 +109,21 @@ export async function PATCH(request: Request, { params }: Params) {
     if (typeof body.isPrestador === 'boolean') {
       const rolesForCheck = (data.roles ?? existing.roles) as Role[];
       data.isPrestador = rolesForCheck.includes('CHOFER') ? body.isPrestador : false;
+    }
+
+    if (typeof body.password === 'string' && body.password.length > 0) {
+      const targetIsAdmin = existing.roles.includes('ADMIN');
+      if (targetIsAdmin && id !== auth.user.id) {
+        return NextResponse.json(
+          { message: 'No podés cambiar la contraseña de otro Admin.' },
+          { status: 403 },
+        );
+      }
+      const pwdError = validatePasswordPlain(body.password);
+      if (pwdError) {
+        return NextResponse.json({ message: pwdError }, { status: 400 });
+      }
+      data.passwordHash = await hash(body.password, 10);
     }
 
     if (Object.keys(data).length === 0) {
@@ -115,7 +143,11 @@ export async function PATCH(request: Request, { params }: Params) {
       },
     });
 
-    return NextResponse.json({ data: user, message: 'Usuario actualizado.' });
+    const message = data.passwordHash
+      ? 'Usuario actualizado. Contraseña restablecida.'
+      : 'Usuario actualizado.';
+
+    return NextResponse.json({ data: user, message });
   } catch (error) {
     console.error('[API /admin/users PATCH]', error);
     return NextResponse.json(

@@ -21,7 +21,6 @@ type GrillaResumen = {
   celadoraMinutos: number | null;
   asistio: number;
   cancelo: number;
-  noSePresento: number;
 };
 
 function daysAgoInput(days: number): string {
@@ -265,7 +264,7 @@ export function RespaldoHistorialPanel() {
                             : `${g.chofer} (sin celadora)`}
                         </td>
                         <td>
-                          {g.asistio}/{g.cancelo}/{g.noSePresento}
+                          {g.asistio}/{g.cancelo}
                         </td>
                         <td>
                           C {g.choferMinutos ?? '—'}′ · Cel {g.celadoraMinutos ?? '—'}′

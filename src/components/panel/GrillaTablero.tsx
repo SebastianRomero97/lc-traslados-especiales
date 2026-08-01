@@ -1,6 +1,7 @@
 'use client';
 
 import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 import {
   accionPorTipoParada,
@@ -9,6 +10,7 @@ import {
   isSalidaItinerario,
   mapGrillaFilaToForm,
   splitTipoItinerario,
+  sugerirHorariosHaciaAtras,
   todayFechaInput,
   type AccionParada,
   type ModalidadItinerario,
@@ -17,8 +19,19 @@ import {
   type TipoParadaForm,
 } from '@/lib/grilla.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
-import { GrillaMapa } from '@/components/panel/GrillaMapa';
 import type { MapaParada } from '@/lib/osm-maps';
+
+const GrillaMapa = dynamic(
+  () => import('@/components/panel/GrillaMapa').then((m) => m.GrillaMapa),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="panel-card__desc" style={{ margin: '0.75rem 0' }}>
+        Cargando mapa…
+      </p>
+    ),
+  },
+);
 
 type RecursoTipo = 'vehiculos' | 'choferes' | 'celadoras' | 'pasajeros' | 'destinos';
 
@@ -83,6 +96,10 @@ export type GrillaTableroInitial = {
   tipoItinerario: TipoItinerario;
   fecha: string;
   nota: string | null;
+  estado?: string;
+  notaRevision?: string | null;
+  /** ISO timestamp para locking optimista al guardar. */
+  updatedAt?: string;
   conCeladora: boolean;
   transporte: { id: string; nombre: string; tipo: string };
   chofer: { id: string; username: string };
@@ -151,6 +168,8 @@ type Props = {
   defaultFecha?: string;
   /** Tipo de itinerario sugerido al crear. */
   defaultTipoItinerario?: TipoItinerario;
+  /** Admin: al guardar PATCH, aprueba la grilla (lista para empezar). */
+  aprobarDespues?: boolean;
   onSaved: () => void;
   onDeleted?: () => void;
   onCancel: () => void;
@@ -162,6 +181,7 @@ export function GrillaTablero({
   initial,
   defaultFecha,
   defaultTipoItinerario,
+  aprobarDespues = false,
   onSaved,
   onDeleted,
   onCancel,
@@ -224,6 +244,9 @@ export function GrillaTablero({
           detalleManual: false,
         }))
       : [],
+  );
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | null>(
+    initial?.updatedAt ?? null,
   );
 
   const [recursoAbierto, setRecursoAbierto] = useState<RecursoTipo | null>('vehiculos');
@@ -363,7 +386,7 @@ export function GrillaTablero({
     void (async () => {
       try {
         const response = await fetch(
-          `/api/coord/puntos-encuentro?celadoraId=${encodeURIComponent(celadoraId)}`,
+          `/api/administracion/puntos-encuentro?celadoraId=${encodeURIComponent(celadoraId)}`,
         );
         const body = await response.json();
         if (!response.ok || cancelled) return;
@@ -601,7 +624,7 @@ export function GrillaTablero({
     if (puntoMode === 'existente' && puntoEncuentroId) {
       const p = puntosEncuentro.find((x) => x.id === puntoEncuentroId);
       if (p && (p.lat != null || p.usarCoordsParaChofer != null)) {
-        await fetch(`/api/coord/puntos-encuentro/${puntoEncuentroId}`, {
+        await fetch(`/api/administracion/puntos-encuentro/${puntoEncuentroId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -614,7 +637,7 @@ export function GrillaTablero({
       return puntoEncuentroId;
     }
     if (puntoMode === 'nuevo') {
-      const puntoRes = await fetch('/api/coord/puntos-encuentro', {
+      const puntoRes = await fetch('/api/administracion/puntos-encuentro', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -723,6 +746,31 @@ export function GrillaTablero({
     }
   };
 
+  const handleSugerirHorarios = () => {
+    const tieneAncla = filas.some((f) => f.destinoId && f.hora.trim());
+    if (!tieneAncla) {
+      popup.error(
+        'Para sugerir horarios, primero cargá la hora en al menos un destino de la grilla.',
+      );
+      return;
+    }
+    const sugeridas = sugerirHorariosHaciaAtras(
+      filas.map((f) => ({ hora: f.hora || null, destinoId: f.destinoId || null })),
+      15,
+    );
+    const next = filas.map((f, i) => {
+      if (f.hora.trim() || !sugeridas[i]) return f;
+      return { ...f, hora: sugeridas[i]! };
+    });
+    const aplicadas = next.filter((f, i) => f.hora !== filas[i]?.hora).length;
+    if (aplicadas === 0) {
+      popup.error('No había paradas sin horario para completar.');
+      return;
+    }
+    setFilas(next);
+    popup.success(`Se sugirieron ${aplicadas} horario(s) hacia atrás (15 min entre paradas).`);
+  };
+
   const handleSave = async () => {
     const error = validate();
     if (error) {
@@ -743,6 +791,7 @@ export function GrillaTablero({
         conCeladora: Boolean(celadoraId),
         celadoraId: celadoraId || null,
         puntoEncuentroId: resolvedPunto,
+        expectedUpdatedAt: !isNew ? expectedUpdatedAt : undefined,
         filas: filas.map((f) => ({
           hora: f.hora || null,
           direccion: f.direccion,
@@ -758,10 +807,14 @@ export function GrillaTablero({
       };
 
       const saveOnce = async (forceReassign: boolean) =>
-        fetch(isNew ? '/api/coord/grillas' : `/api/coord/grillas/${initial!.id}`, {
+        fetch(isNew ? '/api/administracion/grillas' : `/api/administracion/grillas/${initial!.id}`, {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, forceReassign }),
+          body: JSON.stringify({
+            ...payload,
+            forceReassign,
+            ...(aprobarDespues && !isNew ? { aprobarDespues: true } : {}),
+          }),
         });
 
       let response = await saveOnce(false);
@@ -769,7 +822,22 @@ export function GrillaTablero({
         const conflictBody = (await response.json()) as {
           message?: string;
           code?: string;
+          canForce?: boolean;
         };
+        if (conflictBody.code === 'STALE_VERSION') {
+          popup.error(
+            conflictBody.message ??
+              'Otro usuario modificó esta grilla. Volvé a abrirla para ver los cambios.',
+          );
+          return;
+        }
+        if (conflictBody.canForce === false) {
+          popup.error(
+            conflictBody.message ??
+              'Hay un conflicto que no se puede reasignar automáticamente.',
+          );
+          return;
+        }
         const ok = await popup.confirm({
           title: 'Recurso ya asignado',
           message:
@@ -786,7 +854,13 @@ export function GrillaTablero({
         popup.error(await readApiError(response, 'No se pudo guardar la grilla.'));
         return;
       }
-      const body = (await response.json()) as { message?: string };
+      const body = (await response.json()) as {
+        message?: string;
+        data?: { updatedAt?: string };
+      };
+      if (body.data?.updatedAt) {
+        setExpectedUpdatedAt(body.data.updatedAt);
+      }
       popup.success(body.message ?? (isNew ? 'Grilla creada.' : 'Grilla actualizada.'));
       onSaved();
     } catch (err) {
@@ -806,7 +880,7 @@ export function GrillaTablero({
       confirmLabel: 'Eliminar',
     });
     if (!ok) return;
-    const response = await fetch(`/api/coord/grillas/${initial.id}`, { method: 'DELETE' });
+    const response = await fetch(`/api/administracion/grillas/${initial.id}`, { method: 'DELETE' });
     if (!response.ok) {
       popup.error(await readApiError(response, 'No se pudo eliminar la grilla.'));
       return;
@@ -824,7 +898,7 @@ export function GrillaTablero({
     try {
       const params = new URLSearchParams({ areaId, fecha, targetTipo: tipoItinerario });
       if (transporteId) params.set('transporteId', transporteId);
-      const response = await fetch(`/api/coord/grillas/desde-ingreso?${params}`);
+      const response = await fetch(`/api/administracion/grillas/desde-ingreso?${params}`);
       if (!response.ok) {
         popup.error(await readApiError(response, 'No se pudo armar la Salida.'));
         return;
@@ -1022,6 +1096,15 @@ export function GrillaTablero({
         <div className="grilla-tablero__header-actions">
           <button type="button" className="btn btn--outline btn--sm" onClick={onCancel}>
             Volver al listado
+          </button>
+          <button
+            type="button"
+            className="btn btn--outline btn--sm"
+            onClick={handleSugerirHorarios}
+            disabled={submitting || filas.length === 0}
+            title="Completa horarios vacíos hacia atrás desde destinos con hora (15 min)"
+          >
+            Sugerir horarios
           </button>
           {!isNew && (
             <button

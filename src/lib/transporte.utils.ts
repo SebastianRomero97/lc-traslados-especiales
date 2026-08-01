@@ -1,3 +1,5 @@
+import { todayFechaInput } from '@/lib/grilla.utils';
+
 /** Estado VTV calculado desde la fecha de vencimiento (día inclusive). */
 export type EstadoVtv = 'vigente' | 'vencida' | 'sin_dato';
 
@@ -11,7 +13,7 @@ export function estadoVtvFromFecha(
       ? vtvVenceAt.slice(0, 10)
       : vtvVenceAt.toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return 'sin_dato';
-  const today = now.toISOString().slice(0, 10);
+  const today = todayFechaInput(now);
   return raw >= today ? 'vigente' : 'vencida';
 }
 

@@ -15,13 +15,13 @@ const novedadSelect = {
   reportadoPor: { select: { id: true, username: true } },
 } as const;
 
-/** Listado de novedades de vehículos para Admin y Coordinadora. */
+/** Listado de novedades de vehículos para Admin y Administración. */
 export async function GET() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ message: 'No autenticado.' }, { status: 401 });
   }
-  if (!hasAnyRole(session, ['ADMIN', 'COORDINADORA'])) {
+  if (!hasAnyRole(session, ['ADMIN', 'ADMINISTRACION'])) {
     return NextResponse.json({ message: 'No autorizado.' }, { status: 403 });
   }
 
@@ -34,13 +34,13 @@ export async function GET() {
   return NextResponse.json({ data: novedades });
 }
 
-/** Admin o Coordinadora actualiza estado / detalle de una novedad. */
+/** Admin o Administración actualiza estado / detalle de una novedad. */
 export async function PATCH(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ message: 'No autenticado.' }, { status: 401 });
   }
-  if (!hasAnyRole(session, ['ADMIN', 'COORDINADORA'])) {
+  if (!hasAnyRole(session, ['ADMIN', 'ADMINISTRACION'])) {
     return NextResponse.json({ message: 'No autorizado.' }, { status: 403 });
   }
 

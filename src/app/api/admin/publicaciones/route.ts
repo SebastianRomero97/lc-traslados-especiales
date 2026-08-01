@@ -2,9 +2,25 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 import { describeCaughtError } from '@/lib/api-errors';
+import { destroyCloudinaryImage, uploadPublicacionImage } from '@/lib/cloudinary';
+import { validatePublicacionContent } from '@/lib/publicacion-content';
 import type { Role } from '@/lib/roles';
 
-const DESTINATARIOS: Role[] = ['COORDINADORA', 'CELADORA', 'CHOFER'];
+const DESTINATARIOS: Role[] = ['ADMINISTRACION', 'CELADORA', 'CHOFER'];
+
+const SELECT = {
+  id: true,
+  titulo: true,
+  cuerpo: true,
+  imagenUrl: true,
+  imagenPublicId: true,
+  roles: true,
+  startsAt: true,
+  endsAt: true,
+  active: true,
+  createdAt: true,
+  createdBy: { select: { id: true, username: true } },
+} as const;
 
 function parseRoles(input: unknown): Role[] | null {
   if (!Array.isArray(input)) return null;
@@ -14,6 +30,15 @@ function parseRoles(input: unknown): Role[] | null {
   return roles.length > 0 ? roles : null;
 }
 
+function parseRolesFromForm(raw: FormDataEntryValue | null): Role[] | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  try {
+    return parseRoles(JSON.parse(raw) as unknown);
+  } catch {
+    return parseRoles(raw.split(',').map((s) => s.trim()).filter(Boolean));
+  }
+}
+
 export async function GET() {
   const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
@@ -21,17 +46,7 @@ export async function GET() {
   const items = await prisma.publicacion.findMany({
     orderBy: { createdAt: 'desc' },
     take: 50,
-    select: {
-      id: true,
-      titulo: true,
-      cuerpo: true,
-      roles: true,
-      startsAt: true,
-      endsAt: true,
-      active: true,
-      createdAt: true,
-      createdBy: { select: { id: true, username: true } },
-    },
+    select: SELECT,
   });
 
   return NextResponse.json({ data: items });
@@ -41,83 +56,125 @@ export async function POST(request: Request) {
   const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
 
+  let uploadedPublicId: string | null = null;
+
   try {
-    const body = (await request.json()) as {
-      titulo?: string;
-      cuerpo?: string;
-      roles?: unknown;
-      startsAt?: string;
-      endsAt?: string;
-      active?: boolean;
+    const contentType = request.headers.get('content-type') ?? '';
+    let titulo = '';
+    let cuerpo = '';
+    let roles: Role[] | null = null;
+    let startsAt = new Date();
+    let endsAt: Date | null = null;
+    let active = true;
+    let imagenUrl: string | null = null;
+    let imagenPublicId: string | null = null;
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData();
+      titulo = String(form.get('titulo') ?? '').trim();
+      cuerpo = String(form.get('cuerpo') ?? '').trim();
+      roles = parseRolesFromForm(form.get('roles'));
+      const startsRaw = form.get('startsAt');
+      const endsRaw = form.get('endsAt');
+      startsAt = startsRaw ? new Date(String(startsRaw)) : new Date();
+      endsAt = endsRaw ? new Date(String(endsRaw)) : null;
+      const activeRaw = form.get('active');
+      if (typeof activeRaw === 'string') active = activeRaw !== 'false';
+
+      const file = form.get('imagen');
+      if (file instanceof File && file.size > 0) {
+        const uploaded = await uploadPublicacionImage(file);
+        imagenUrl = uploaded.url;
+        imagenPublicId = uploaded.publicId;
+        uploadedPublicId = uploaded.publicId;
+      }
+    } else {
+      const body = (await request.json()) as {
+        titulo?: string;
+        cuerpo?: string;
+        roles?: unknown;
+        startsAt?: string;
+        endsAt?: string;
+        active?: boolean;
+      };
+
+      titulo = body.titulo?.trim() ?? '';
+      cuerpo = body.cuerpo?.trim() ?? '';
+      roles = parseRoles(body.roles);
+      startsAt = body.startsAt ? new Date(body.startsAt) : new Date();
+      endsAt = body.endsAt ? new Date(body.endsAt) : null;
+      active = body.active !== false;
+      // Imagen solo vía multipart (Cloudinary server-side).
+    }
+
+    const failValidation = async (message: string, status = 400) => {
+      if (uploadedPublicId) {
+        await destroyCloudinaryImage(uploadedPublicId);
+        uploadedPublicId = null;
+      }
+      return NextResponse.json({ message }, { status });
     };
 
-    const titulo = body.titulo?.trim() ?? '';
-    const cuerpo = body.cuerpo?.trim() ?? '';
-    const roles = parseRoles(body.roles);
+    const content = validatePublicacionContent({
+      titulo,
+      cuerpo,
+      hasImagen: Boolean(imagenUrl),
+    });
+    if (!content.ok) {
+      return failValidation(content.message);
+    }
+    titulo = content.titulo;
+    cuerpo = content.cuerpo;
 
-    if (titulo.length < 3) {
-      return NextResponse.json(
-        { message: 'El título debe tener al menos 3 caracteres.' },
-        { status: 400 },
-      );
-    }
-    if (cuerpo.length < 5) {
-      return NextResponse.json(
-        { message: 'El mensaje debe tener al menos 5 caracteres.' },
-        { status: 400 },
-      );
-    }
     if (!roles) {
-      return NextResponse.json(
-        { message: 'Seleccioná al menos un destinatario (Administración, celadoras o choferes).' },
-        { status: 400 },
+      return failValidation(
+        'Seleccioná al menos un destinatario (Administración, celadoras o choferes).',
       );
     }
-
-    const startsAt = body.startsAt ? new Date(body.startsAt) : new Date();
-    const endsAt = body.endsAt ? new Date(body.endsAt) : null;
 
     if (!endsAt || Number.isNaN(endsAt.getTime())) {
-      return NextResponse.json(
-        { message: 'Indicá hasta cuándo es válida la publicación.' },
-        { status: 400 },
-      );
+      return failValidation('Indicá hasta cuándo es válida la publicación.');
     }
     if (Number.isNaN(startsAt.getTime()) || endsAt <= startsAt) {
-      return NextResponse.json(
-        { message: 'La fecha de fin debe ser posterior al inicio.' },
-        { status: 400 },
-      );
+      return failValidation('La fecha de fin debe ser posterior al inicio.');
     }
 
     const item = await prisma.publicacion.create({
       data: {
         titulo,
         cuerpo,
+        imagenUrl,
+        imagenPublicId,
         roles,
         startsAt,
         endsAt,
-        active: body.active !== false,
+        active,
         createdById: auth.user.id,
       },
-      select: {
-        id: true,
-        titulo: true,
-        cuerpo: true,
-        roles: true,
-        startsAt: true,
-        endsAt: true,
-        active: true,
-        createdAt: true,
-      },
+      select: SELECT,
     });
+
+    uploadedPublicId = null;
 
     return NextResponse.json(
       { data: item, message: 'Publicación creada.' },
       { status: 201 },
     );
   } catch (error) {
+    if (uploadedPublicId) {
+      await destroyCloudinaryImage(uploadedPublicId);
+    }
     console.error('[API /admin/publicaciones POST]', error);
+    if (error instanceof Error) {
+      const msg = error.message;
+      if (
+        msg.includes('Cloudinary') ||
+        msg.includes('Formato no permitido') ||
+        msg.includes('5 MB')
+      ) {
+        return NextResponse.json({ message: msg }, { status: 400 });
+      }
+    }
     return NextResponse.json(
       { message: describeCaughtError(error, 'No pudimos crear la publicación.') },
       { status: 500 },

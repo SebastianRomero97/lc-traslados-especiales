@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
+import { todayFechaInput } from '@/lib/grilla.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import {
   dateToInput,
@@ -426,7 +427,7 @@ export function AdminTransportesManager() {
                             Estado:{' '}
                             {labelEstadoVtv(
                               ficha.vtvVenceAt
-                                ? ficha.vtvVenceAt >= new Date().toISOString().slice(0, 10)
+                                ? ficha.vtvVenceAt >= todayFechaInput()
                                   ? 'vigente'
                                   : 'vencida'
                                 : 'sin_dato',

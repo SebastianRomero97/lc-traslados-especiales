@@ -237,8 +237,8 @@ export function AdminAreasManager() {
                 : 'Seleccioná un área para gestionar destinos.'}
             </p>
           ) : (
-            <div className="coord-area-detail">
-              <div className="coord-assign-row" style={{ marginBottom: 'var(--space-sm)' }}>
+            <div className="adm-area-detail">
+              <div className="adm-assign-row" style={{ marginBottom: 'var(--space-sm)' }}>
                 <p className="panel-card__desc" style={{ margin: 0, flex: 1 }}>
                   {selected._count.destinos} destino(s) · {selected._count.pasajeros} pasajero(s) en
                   área

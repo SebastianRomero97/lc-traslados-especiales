@@ -32,7 +32,6 @@ export async function PATCH(request: Request, { params }: Params) {
       informeChoferCeladora?: string;
       informeChoferVehiculo?: string;
       combustibleNivel?: string | null;
-      isPrestador?: boolean;
     };
 
     if (body.rol !== 'CELADORA' && body.rol !== 'CHOFER') {
@@ -45,6 +44,13 @@ export async function PATCH(request: Request, { params }: Params) {
     const grilla = await findGrillaOperativa(id);
     if (!grilla) {
       return NextResponse.json({ message: 'Grilla no encontrada.' }, { status: 404 });
+    }
+
+    if (grilla.estado === 'FINALIZADA' || grilla.cierreTipo) {
+      return NextResponse.json(
+        { message: 'Esta jornada ya fue cerrada. No se puede modificar el informe.' },
+        { status: 400 },
+      );
     }
 
     if (body.rol === 'CELADORA') {
@@ -109,7 +115,12 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const obsCeladora = body.informeChoferCeladora?.trim() ?? '';
     const obsVehiculo = body.informeChoferVehiculo?.trim() ?? '';
-    const esPrestador = Boolean(body.isPrestador) || Boolean(auth.user.isPrestador);
+    // Solo el flag de DB/sesión; nunca confiar en el body del cliente.
+    const userDb = await prisma.user.findUnique({
+      where: { id: auth.user.id },
+      select: { isPrestador: true },
+    });
+    const esPrestador = Boolean(userDb?.isPrestador);
     const combustible = esPrestador
       ? null
       : (body.combustibleNivel as NivelCombustible | undefined);
@@ -147,6 +158,11 @@ export async function PATCH(request: Request, { params }: Params) {
         informeChoferCeladora: grilla.conCeladora ? obsCeladora : null,
         informeChoferVehiculo: obsVehiculo,
         combustibleNivel: esPrestador ? null : combustible,
+        estado: 'FINALIZADA',
+        cierreTipo: 'NORMAL',
+        cierreNota: null,
+        cerradoPorId: auth.user.id,
+        cerradoAt: new Date(),
       },
       select: {
         id: true,
@@ -155,6 +171,9 @@ export async function PATCH(request: Request, { params }: Params) {
         informeChoferCeladora: true,
         informeChoferVehiculo: true,
         combustibleNivel: true,
+        estado: true,
+        cierreTipo: true,
+        cerradoAt: true,
       },
     });
 

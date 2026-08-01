@@ -4,10 +4,10 @@ import {
   type TipoGrupoItinerario,
 } from '@/lib/grilla.utils';
 
-/** Estados visibles en ficha (legacy NO_SE_PRESENTO → Canceló). */
+/** Estados de asistencia en ficha. */
 export type EstadoAsistenciaFicha = 'ASISTIO' | 'CANCELO';
 
-export type AsistenciaEstadoCount = 'ASISTIO' | 'CANCELO' | 'NO_SE_PRESENTO';
+export type AsistenciaEstadoCount = 'ASISTIO' | 'CANCELO';
 
 export type ResumenAsistencias = {
   asistio: number;

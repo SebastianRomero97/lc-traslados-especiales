@@ -1,4 +1,5 @@
 import { formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
+import { labelTipoCierre } from '@/lib/grilla-estado';
 import {
   labelEstadoAsistenciaFicha,
   normalizeEstadoAsistenciaFicha,
@@ -22,6 +23,11 @@ export type GrillaPrintInput = {
     estado: string;
     motivoCancelacion?: string | null;
   }[];
+  /** Cierre de jornada (Admin forzado / interrumpido / normal). */
+  cierreTipo?: string | null;
+  cierreNota?: string | null;
+  cerradoPorNombre?: string | null;
+  cerradoAt?: string | null;
 };
 
 function escapeHtml(value: string): string {
@@ -43,14 +49,22 @@ function responsablesDe(g: GrillaPrintInput): string {
 }
 
 function pasajerosUnicos(g: GrillaPrintInput): string[] {
-  const seen = new Set<string>();
+  const seenId = new Set<string>();
+  const seenNombre = new Set<string>();
   const nombres: string[] = [];
   for (const f of g.filas) {
-    if (!f.pasajeroId) continue;
-    if (seen.has(f.pasajeroId)) continue;
-    seen.add(f.pasajeroId);
     const nombre = f.pasajeroNombre.trim();
     if (!nombre) continue;
+    if (f.pasajeroId) {
+      if (seenId.has(f.pasajeroId)) continue;
+      seenId.add(f.pasajeroId);
+      seenNombre.add(nombreKey(nombre));
+      nombres.push(nombre);
+      continue;
+    }
+    const key = nombreKey(nombre);
+    if (seenNombre.has(key)) continue;
+    seenNombre.add(key);
     nombres.push(nombre);
   }
   return nombres.sort((a, b) => a.localeCompare(b, 'es'));
@@ -110,6 +124,31 @@ export function buildGrillaPrintBodyHtml(g: GrillaPrintInput): string {
     })
     .join('');
 
+  const cierreLabel = labelTipoCierre(g.cierreTipo);
+  const cierreBar =
+    cierreLabel && (g.cierreTipo === 'FORZADO_ADMIN' || g.cierreTipo === 'INTERRUMPIDO')
+      ? `<div class="bar bar--meta">
+        <span><strong>Cierre:</strong> ${escapeHtml(cierreLabel)}</span>
+        ${
+          g.cerradoPorNombre
+            ? `<span><strong>Por:</strong> ${escapeHtml(g.cerradoPorNombre)}</span>`
+            : ''
+        }
+        ${
+          g.cerradoAt
+            ? `<span><strong>Cuando:</strong> ${escapeHtml(
+                new Date(g.cerradoAt).toLocaleString('es-AR'),
+              )}</span>`
+            : ''
+        }
+        ${
+          g.cierreNota
+            ? `<span><strong>Observación:</strong> ${escapeHtml(g.cierreNota)}</span>`
+            : ''
+        }
+      </div>`
+      : '';
+
   return `
     <section class="recorrido">
       <div class="bar bar--titulo">
@@ -124,6 +163,7 @@ export function buildGrillaPrintBodyHtml(g: GrillaPrintInput): string {
         <span><strong>Nombre:</strong> ${escapeHtml(g.nombre || 'Sin nombre')}</span>
         <span><strong>Responsables:</strong> ${escapeHtml(responsablesDe(g))}</span>
       </div>
+      ${cierreBar}
       <table>
         <thead>
           <tr>

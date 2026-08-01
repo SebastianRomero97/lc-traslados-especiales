@@ -69,13 +69,19 @@ export async function POST(request: Request, { params }: Params) {
       if (!canAccessAsCeladora(grilla, auth.user.id)) {
         return NextResponse.json({ message: 'No sos la celadora de esta grilla.' }, { status: 403 });
       }
+      if (grilla.estado !== 'APROBADA' && grilla.estado !== 'EN_CURSO') {
+        return NextResponse.json(
+          { message: 'La grilla aún no está lista para operar.' },
+          { status: 400 },
+        );
+      }
       if (body.action === 'iniciar') {
         if (grilla.celadoraInicioAt) {
           return NextResponse.json({ message: 'El recorrido ya fue iniciado.' }, { status: 400 });
         }
         const updated = await prisma.grilla.update({
           where: { id },
-          data: { celadoraInicioAt: now },
+          data: { celadoraInicioAt: now, estado: 'EN_CURSO' },
           include: grillaInclude,
         });
         return NextResponse.json({
@@ -108,9 +114,15 @@ export async function POST(request: Request, { params }: Params) {
       if (grilla.choferInicioAt) {
         return NextResponse.json({ message: 'El manejo ya fue iniciado.' }, { status: 400 });
       }
+      if (grilla.estado !== 'APROBADA' && grilla.estado !== 'EN_CURSO') {
+        return NextResponse.json(
+          { message: 'La grilla aún no está lista para empezar.' },
+          { status: 400 },
+        );
+      }
       const updated = await prisma.grilla.update({
         where: { id },
-        data: { choferInicioAt: now },
+        data: { choferInicioAt: now, estado: 'EN_CURSO' },
         include: grillaInclude,
       });
       return NextResponse.json({ data: updated, message: 'Inicio de manejo registrado.' });

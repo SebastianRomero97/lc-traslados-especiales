@@ -8,6 +8,7 @@ import {
   ROLE_LABEL,
   type Role,
 } from '@/lib/roles';
+import { PASSWORD_MIN_LENGTH, validatePasswordPlain } from '@/lib/password';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 
 type AdminUser = {
@@ -24,6 +25,8 @@ type EditForm = {
   active: boolean;
   roles: Role[];
   isPrestador: boolean;
+  password: string;
+  passwordConfirm: string;
 };
 
 export function AdminUsersManager({ currentUserId }: { currentUserId: string }) {
@@ -43,6 +46,8 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     active: true,
     roles: [],
     isPrestador: false,
+    password: '',
+    passwordConfirm: '',
   });
 
   const loadUsers = useCallback(async () => {
@@ -102,12 +107,21 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       active: user.active,
       roles: [...user.roles],
       isPrestador: Boolean(user.isPrestador),
+      password: '',
+      passwordConfirm: '',
     });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditForm({ username: '', active: true, roles: [], isPrestador: false });
+    setEditForm({
+      username: '',
+      active: true,
+      roles: [],
+      isPrestador: false,
+      password: '',
+      passwordConfirm: '',
+    });
   };
 
   const handleCreate = async (event: FormEvent) => {
@@ -160,6 +174,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
 
   const handleSaveEdit = async (user: AdminUser) => {
     const isAdmin = user.roles.includes('ADMIN');
+    const canResetPassword = !isAdmin || user.id === currentUserId;
 
     if (!editForm.username.trim() || editForm.username.trim().length < 2) {
       popup.error('El usuario debe tener al menos 2 caracteres.');
@@ -171,6 +186,23 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       return;
     }
 
+    const newPassword = editForm.password.trim();
+    if (newPassword || editForm.passwordConfirm.trim()) {
+      if (!canResetPassword) {
+        popup.error('No podés cambiar la contraseña de otro Admin.');
+        return;
+      }
+      if (newPassword !== editForm.passwordConfirm.trim()) {
+        popup.error('La confirmación de contraseña no coincide.');
+        return;
+      }
+      const pwdError = validatePasswordPlain(newPassword);
+      if (pwdError) {
+        popup.error(pwdError);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const payload: {
@@ -178,6 +210,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
         active: boolean;
         roles?: Role[];
         isPrestador?: boolean;
+        password?: string;
       } = {
         username: editForm.username.trim(),
         active: editForm.active,
@@ -185,6 +218,9 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       if (!isAdmin) {
         payload.roles = editForm.roles;
         payload.isPrestador = editForm.isPrestador;
+      }
+      if (newPassword && canResetPassword) {
+        payload.password = newPassword;
       }
 
       const response = await fetch(`/api/admin/users/${user.id}`, {
@@ -262,9 +298,9 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
               type="password"
               value={form.password}
               onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-              placeholder="Contraseña"
+              placeholder={`Mínimo ${PASSWORD_MIN_LENGTH} caracteres`}
               required
-              minLength={4}
+              minLength={PASSWORD_MIN_LENGTH}
             />
           </div>
 
@@ -330,19 +366,59 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                 {sortedUsers.map((user) => {
                   const isAdmin = user.roles.includes('ADMIN');
                   const canDelete = user.id !== currentUserId && !isAdmin;
+                  const canResetPassword = !isAdmin || user.id === currentUserId;
                   const isEditing = editingId === user.id;
 
                   return (
                     <tr key={user.id} className={isEditing ? 'is-selected' : undefined}>
                       <td>
                         {isEditing ? (
-                          <input
-                            value={editForm.username}
-                            onChange={(e) =>
-                              setEditForm((prev) => ({ ...prev, username: e.target.value }))
-                            }
-                            aria-label="Usuario"
-                          />
+                          <div className="admin-users__edit-stack">
+                            <input
+                              value={editForm.username}
+                              onChange={(e) =>
+                                setEditForm((prev) => ({ ...prev, username: e.target.value }))
+                              }
+                              aria-label="Usuario"
+                            />
+                            {canResetPassword ? (
+                              <>
+                                <input
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder={`Nueva contraseña (mín. ${PASSWORD_MIN_LENGTH})`}
+                                  value={editForm.password}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      password: e.target.value,
+                                    }))
+                                  }
+                                  aria-label="Nueva contraseña"
+                                />
+                                <input
+                                  type="password"
+                                  autoComplete="new-password"
+                                  placeholder="Confirmar contraseña"
+                                  value={editForm.passwordConfirm}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      passwordConfirm: e.target.value,
+                                    }))
+                                  }
+                                  aria-label="Confirmar contraseña"
+                                />
+                                <small className="panel-card__desc">
+                                  Dejá vacío para no cambiar la clave.
+                                </small>
+                              </>
+                            ) : (
+                              <small className="panel-card__desc">
+                                No se puede resetear la clave de otro Admin.
+                              </small>
+                            )}
+                          </div>
                         ) : (
                           user.username
                         )}
@@ -403,7 +479,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                               }))
                             }
                             aria-label="Estado"
-                            disabled={user.id === currentUserId}
+                            disabled={user.id === currentUserId || (isAdmin && user.id !== currentUserId)}
                           >
                             <option value="activo">Activo</option>
                             <option value="no">No disponible</option>

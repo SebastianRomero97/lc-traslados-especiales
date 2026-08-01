@@ -1,16 +1,18 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
+import { validatePublicacionContent } from '@/lib/publicacion-content';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import type { Role } from '@/lib/roles';
 
-type Destinatario = Extract<Role, 'COORDINADORA' | 'CELADORA' | 'CHOFER'>;
+type Destinatario = Extract<Role, 'ADMINISTRACION' | 'CELADORA' | 'CHOFER'>;
 
 type Publicacion = {
   id: string;
   titulo: string;
   cuerpo: string;
+  imagenUrl?: string | null;
   roles: Destinatario[];
   startsAt: string;
   endsAt: string;
@@ -20,7 +22,7 @@ type Publicacion = {
 };
 
 const DESTINATARIO_OPTIONS: { id: Destinatario; label: string }[] = [
-  { id: 'COORDINADORA', label: 'Administración' },
+  { id: 'ADMINISTRACION', label: 'Administración' },
   { id: 'CELADORA', label: 'Celadoras' },
   { id: 'CHOFER', label: 'Choferes' },
 ];
@@ -47,13 +49,16 @@ function rolesLabel(roles: Destinatario[]): string {
 
 export function AdminPublicacionesManager() {
   const popup = usePanelPopup();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Publicacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [imagenFile, setImagenFile] = useState<File | null>(null);
+  const [imagenPreview, setImagenPreview] = useState<string | null>(null);
   const [form, setForm] = useState({
     titulo: '',
     cuerpo: '',
-    roles: ['COORDINADORA', 'CELADORA', 'CHOFER'] as Destinatario[],
+    roles: ['ADMINISTRACION', 'CELADORA', 'CHOFER'] as Destinatario[],
     startsAt: toLocalInput(new Date().toISOString()),
     endsAt: defaultEndsAt(),
   });
@@ -80,6 +85,12 @@ export function AdminPublicacionesManager() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      if (imagenPreview) URL.revokeObjectURL(imagenPreview);
+    };
+  }, [imagenPreview]);
+
   const toggleRole = (role: Destinatario) => {
     setForm((prev) => ({
       ...prev,
@@ -89,22 +100,63 @@ export function AdminPublicacionesManager() {
     }));
   };
 
+  const clearImagen = () => {
+    if (imagenPreview) URL.revokeObjectURL(imagenPreview);
+    setImagenFile(null);
+    setImagenPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const onImagenChange = (file: File | null) => {
+    if (imagenPreview) URL.revokeObjectURL(imagenPreview);
+    if (!file) {
+      setImagenFile(null);
+      setImagenPreview(null);
+      return;
+    }
+    setImagenFile(file);
+    setImagenPreview(URL.createObjectURL(file));
+  };
+
+  const resetForm = () => {
+    setForm({
+      titulo: '',
+      cuerpo: '',
+      roles: ['ADMINISTRACION', 'CELADORA', 'CHOFER'],
+      startsAt: toLocalInput(new Date().toISOString()),
+      endsAt: defaultEndsAt(),
+    });
+    clearImagen();
+  };
+
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     if (form.roles.length === 0) {
       popup.error('Seleccioná al menos un destinatario.');
       return;
     }
+    const content = validatePublicacionContent({
+      titulo: form.titulo,
+      cuerpo: form.cuerpo,
+      hasImagen: Boolean(imagenFile),
+    });
+    if (!content.ok) {
+      popup.error(content.message);
+      return;
+    }
     setSubmitting(true);
     try {
+      const fd = new FormData();
+      fd.set('titulo', content.titulo);
+      fd.set('cuerpo', content.cuerpo);
+      fd.set('roles', JSON.stringify(form.roles));
+      fd.set('startsAt', new Date(form.startsAt).toISOString());
+      fd.set('endsAt', new Date(form.endsAt).toISOString());
+      if (imagenFile) fd.set('imagen', imagenFile);
+
       const response = await fetch('/api/admin/publicaciones', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          startsAt: new Date(form.startsAt).toISOString(),
-          endsAt: new Date(form.endsAt).toISOString(),
-        }),
+        body: fd,
       });
       if (!response.ok) {
         popup.error(await readApiError(response, 'No se pudo crear la publicación.'));
@@ -112,13 +164,7 @@ export function AdminPublicacionesManager() {
       }
       const body = (await response.json()) as { message?: string };
       popup.success(body.message ?? 'Publicación creada.');
-      setForm({
-        titulo: '',
-        cuerpo: '',
-        roles: ['COORDINADORA', 'CELADORA', 'CHOFER'],
-        startsAt: toLocalInput(new Date().toISOString()),
-        endsAt: defaultEndsAt(),
-      });
+      resetForm();
       await load();
     } catch {
       popup.error('Error de conexión.');
@@ -163,31 +209,48 @@ export function AdminPublicacionesManager() {
       <section className="panel-card">
         <h2>Nueva publicación</h2>
         <p className="panel-card__desc">
-          Elegí manualmente a quiénes llega el aviso. Mientras esté activa y dentro del período,
-          aparece en el panel de esos roles.
+          Combinaciones válidas: solo título, título + mensaje, título + imagen, las tres juntas, o
+          solo imagen. El mensaje no puede ir sin título. Destinatarios y vigencia siguen siendo
+          obligatorios.
         </p>
         <form className="publicacion-form" onSubmit={handleCreate}>
           <div className="form-group">
-            <label htmlFor="pub-titulo">Título</label>
+            <label htmlFor="pub-titulo">Título (opcional si hay imagen)</label>
             <input
               id="pub-titulo"
               value={form.titulo}
               onChange={(e) => setForm((p) => ({ ...p, titulo: e.target.value }))}
-              required
-              minLength={3}
             />
           </div>
           <div className="form-group">
-            <label htmlFor="pub-cuerpo">Mensaje</label>
+            <label htmlFor="pub-cuerpo">Mensaje (opcional; requiere título)</label>
             <textarea
               id="pub-cuerpo"
               className="operativo-informe"
               rows={3}
               value={form.cuerpo}
               onChange={(e) => setForm((p) => ({ ...p, cuerpo: e.target.value }))}
-              required
-              minLength={5}
             />
+          </div>
+          <div className="form-group">
+            <label htmlFor="pub-imagen">Imagen (opcional si hay título)</label>
+            <input
+              ref={fileInputRef}
+              id="pub-imagen"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(e) => onImagenChange(e.target.files?.[0] ?? null)}
+            />
+            <small className="form-hint">JPG, PNG, WebP o GIF · máx. 5 MB</small>
+            {imagenPreview ? (
+              <div className="publicacion-imagen-preview">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imagenPreview} alt="Vista previa" />
+                <button type="button" className="btn btn--outline btn--sm" onClick={clearImagen}>
+                  Quitar imagen
+                </button>
+              </div>
+            ) : null}
           </div>
           <fieldset className="publicacion-destinatarios">
             <legend>Destinatarios</legend>
@@ -252,13 +315,19 @@ export function AdminPublicacionesManager() {
               return (
                 <li key={item.id} className={!item.active ? 'is-inactive' : ''}>
                   <div className="publicaciones-admin-list__head">
-                    <strong>{item.titulo}</strong>
+                    <strong>{item.titulo || (item.imagenUrl ? 'Solo imagen' : 'Sin título')}</strong>
                     <span>
                       {vigente ? 'Vigente' : item.active ? 'Fuera de período' : 'Inactiva'} ·{' '}
                       {rolesLabel(item.roles)}
                     </span>
                   </div>
-                  <p>{item.cuerpo}</p>
+                  {item.imagenUrl ? (
+                    <div className="publicaciones-admin-list__img">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.imagenUrl} alt="" />
+                    </div>
+                  ) : null}
+                  {item.cuerpo ? <p>{item.cuerpo}</p> : null}
                   <small>
                     {new Date(item.startsAt).toLocaleString('es-AR')} →{' '}
                     {new Date(item.endsAt).toLocaleString('es-AR')}

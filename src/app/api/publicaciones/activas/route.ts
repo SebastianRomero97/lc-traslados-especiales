@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole, type Role } from '@/lib/roles';
 
-const DESTINATARIOS: Role[] = ['COORDINADORA', 'CELADORA', 'CHOFER'];
+const DESTINATARIOS: Role[] = ['ADMINISTRACION', 'CELADORA', 'CHOFER'];
 
 /** Publicaciones vigentes según los roles del usuario. */
 export async function GET() {
@@ -35,6 +35,7 @@ export async function GET() {
       id: true,
       titulo: true,
       cuerpo: true,
+      imagenUrl: true,
       roles: true,
       startsAt: true,
       endsAt: true,

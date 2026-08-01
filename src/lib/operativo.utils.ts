@@ -1,20 +1,18 @@
 import type { AccionParada } from '@/lib/grilla.utils';
 
-export type EstadoAsistencia = 'ASISTIO' | 'CANCELO' | 'NO_SE_PRESENTO';
+export type EstadoAsistencia = 'ASISTIO' | 'CANCELO';
 
 export type TipoControlParada = 'pasajero' | 'destino';
 
 export const ESTADO_ASISTENCIA_LABEL: Record<EstadoAsistencia, string> = {
   ASISTIO: 'Asistió',
   CANCELO: 'Canceló',
-  NO_SE_PRESENTO: 'No se presentó',
 };
 
 /** Etiquetas para destinos institucionales (no son pasajeros). */
 export const ESTADO_DESTINO_LABEL: Record<EstadoAsistencia, string> = {
   ASISTIO: 'Completado',
-  CANCELO: 'Cancelado',
-  NO_SE_PRESENTO: 'Sin llegada',
+  CANCELO: 'Observación',
 };
 
 export function labelsParaControl(tipo: TipoControlParada): Record<EstadoAsistencia, string> {

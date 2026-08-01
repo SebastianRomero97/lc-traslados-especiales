@@ -12,7 +12,7 @@ datasource db {
 
 enum Role {
   ADMIN
-  COORDINADORA
+  ADMINISTRACION
   CELADORA
   CHOFER
 }
@@ -37,7 +37,23 @@ enum AccionParada {
 enum EstadoAsistencia {
   ASISTIO
   CANCELO
-  NO_SE_PRESENTO
+}
+
+/// Ciclo de vida de una grilla (creación → revisión Admin → operativa).
+enum EstadoGrilla {
+  BORRADOR
+  EN_REVISION
+  OBSERVADA
+  APROBADA
+  EN_CURSO
+  FINALIZADA
+}
+
+/// Cómo se cerró la jornada (null = aún abierta / no aplica).
+enum TipoCierreGrilla {
+  NORMAL
+  FORZADO_ADMIN
+  INTERRUMPIDO
 }
 
 /// Nivel de combustible estandarizado (fracción de tanque) para comparar entre vehículos.
@@ -53,7 +69,7 @@ model User {
   id           String   @id @default(cuid())
   username     String   @unique
   passwordHash String
-  /// Uno o más roles. Admin es exclusivo ([ADMIN]). Operativos: combinación de COORDINADORA / CELADORA / CHOFER.
+  /// Uno o más roles. Admin es exclusivo ([ADMIN]). Operativos: combinación de ADMINISTRACION / CELADORA / CHOFER.
   roles        Role[]
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -74,6 +90,7 @@ model User {
   grillasComoChofer   Grilla[] @relation("GrillaChofer")
   grillasComoCeladora Grilla[] @relation("GrillaCeladora")
   grillasCreadas      Grilla[] @relation("GrillaCreador")
+  grillasCierreAdmin  Grilla[] @relation("GrillaCierreAdmin")
   asistenciasRegistradas Asistencia[] @relation("AsistenciaRegistrador")
   novedadesVehiculo      NovedadVehiculo[] @relation("NovedadVehiculoAutor")
   publicacionesCreadas   Publicacion[] @relation("PublicacionAutor")
@@ -270,6 +287,10 @@ model Grilla {
   tipoItinerario TipoItinerario
   fecha          DateTime       @db.Date
   nota           String?
+  /// Estado del flujo de aprobación / operativa.
+  estado         EstadoGrilla   @default(BORRADOR)
+  /// Nota del Admin cuando observa / pide corrección.
+  notaRevision   String?
   conCeladora    Boolean        @default(true)
 
   areaId String
@@ -306,6 +327,13 @@ model Grilla {
   informeChoferVehiculo  String?
   combustibleNivel       NivelCombustible?
 
+  /// Cierre de jornada (normal del chofer o Admin forzado/interrumpido).
+  cierreTipo    TipoCierreGrilla?
+  cierreNota    String?
+  cerradoPorId  String?
+  cerradoPor    User?     @relation("GrillaCierreAdmin", fields: [cerradoPorId], references: [id], onDelete: SetNull)
+  cerradoAt     DateTime?
+
   filas        GrillaFila[]
   asistencias  Asistencia[]
 
@@ -316,6 +344,7 @@ model Grilla {
   @@index([choferId])
   @@index([celadoraId])
   @@index([areaId])
+  @@index([estado])
 }
 
 model GrillaFila {
@@ -391,7 +420,10 @@ model Publicacion {
   id          String   @id @default(cuid())
   titulo      String
   cuerpo      String
-  /// Roles destinatarios: COORDINADORA, CELADORA y/o CHOFER (selección manual del Admin)
+  /// Imagen opcional (Cloudinary).
+  imagenUrl      String?
+  imagenPublicId String?
+  /// Roles destinatarios: ADMINISTRACION, CELADORA y/o CHOFER (selección manual del Admin)
   roles       Role[]
   startsAt    DateTime @default(now())
   endsAt      DateTime

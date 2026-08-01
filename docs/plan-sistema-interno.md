@@ -24,7 +24,7 @@ Se necesita un **backend** para soportar usuarios, roles, áreas, grillas, etc.
 ## Jerarquía de roles
 
 1. **Admin** (arriba de todos) — catálogos: usuarios, áreas, destinos, transportes, pasajeros, choferes
-2. **Administración** (antes Coordinadora; enum interno `COORDINADORA`) — asignaciones y grillas por área
+2. **Administración** (enum `ADMINISTRACION`) — asignaciones y grillas por área
 3. **Celadora** / **Chofer** (operativos; ambos con panel)
 
 ---
@@ -32,7 +32,7 @@ Se necesita un **backend** para soportar usuarios, roles, áreas, grillas, etc.
 ## Rediseño Administración + Maps (en curso)
 
 ### Etapa 1 (lista)
-- Renombre visible Coordinadora → Administración (ruta `/panel/coordinadora` se mantiene).
+- Renombre completo Coordinadora → Administración (rol `ADMINISTRACION`, panel `/panel/administracion`, APIs `/api/administracion`).
 - Áreas y destinos: solo Admin crea/edita/elimina.
 - Administración elige área y asigna recursos.
 - Shell: toggle de paneles multi-rol; tablero Área con pool acordeón + pestañas de área (DnD).
@@ -58,8 +58,9 @@ Se necesita un **backend** para soportar usuarios, roles, áreas, grillas, etc.
 - Geocode automático + **coordenadas** guardadas (dirección de texto intacta para el chofer).
 - Pins arrastrables / “Ubicar en mapa”; sugerencia de aplicar el pin también a Maps/Waze.
 - Optimizar recorrido / Descartar optimización.
+- **Sugerir horarios** hacia atrás desde destinos con hora fija (15 min; no pisa horarios ya cargados).
 - Google Maps Platform queda como opción futura si el dueño prefiere pagar el servicio.
-- Pendiente: sugerencias de horario hacia atrás desde destinos fijos.
+- Pendiente opcional: retorno a base.
 
 ### Etapas siguientes
 - (refinar) horarios sugeridos hacia atrás desde destinos fijos; retorno a base opcional.
@@ -71,12 +72,12 @@ Se necesita un **backend** para soportar usuarios, roles, áreas, grillas, etc.
 | Entidad | Tipo | Notas |
 |---------|------|--------|
 | Admin | Persona / rol | Gestión global |
-| Coordinadora | Persona / rol | Gestión de áreas y grillas |
+| Administración | Persona / rol | Gestión de áreas y grillas |
 | Celadora | Persona / rol | Panel: recorrido pasajeros + asistencia |
 | Chofer | Persona / rol | Panel: manejo del vehículo, rutas, celadora opcional |
 | Transporte | Recurso | Vehículo; puede modificarse |
 | Pasajero | Persona | Nombre y dirección |
-| Área | Organización | Definida por la coordinadora |
+| Área | Organización | Definida por la Administración |
 | Destino | Dentro de un área | Nombre y domicilio |
 | Grilla | Hoja de ruta | Itinerario diario; asignada a celadora y chofer |
 | Publicación | Comunicación | Creada por el admin |
@@ -91,7 +92,7 @@ Estados comunes (donde aplique): **activo** / **inactivo**.
 - **Solo el Admin** puede crear usuarios (no hay registro público).
 - Desde su panel puede:
   - **Crear** usuario: nombre de usuario + contraseña.
-  - **Asignar uno o más roles** al usuario: Coordinadora, Celadora y/o Chofer (cualquier combinación).
+  - **Asignar uno o más roles** al usuario: Administración, Celadora y/o Chofer (cualquier combinación).
   - **Eliminar** usuario (no Admins).
 - El rol **Admin** no se asigna desde el panel: solo existen por seed (Hori y Gladis).
 - Las credenciales son **únicas**.
@@ -126,7 +127,7 @@ El Admin visualiza el **total de todo**, por ejemplo:
 
 ### Publicaciones
 - Crear publicaciones con **duración** definida por el admin.
-- Destinatarios **manuales** (checkboxes): coordinadoras, celadoras y/o choferes.
+- Destinatarios **manuales** (checkboxes): Administración, celadoras y/o choferes.
 - Aparecen en el panel de los roles seleccionados mientras estén vigentes.
 
 ---
@@ -162,7 +163,7 @@ Notas del ejemplo:
 3. La envían al **grupo de WhatsApp** (celadoras + choferes).
 
 ### Flujo WhatsApp deseado (sistema) — **Opción A (confirmada)**
-- La coordinadora crea la grilla en el sistema.
+- La Administración crea la grilla en el sistema.
 - El sistema genera **imagen o PDF** de la grilla.
 - Se abre WhatsApp para **compartir** al grupo (similar al flujo actual de captura, pero desde la app).
 - No se usa API WhatsApp Business en esta etapa.
@@ -190,12 +191,12 @@ Notas del ejemplo:
 - Botón **"Iniciar sesión"** en navbar.
 - Setup **Prisma + PostgreSQL**.
 - Auth básica (login / logout / sesión).
-- Redirección por rol a panel vacío (Admin, Coordinadora, Celadora, Chofer).
+- Redirección por rol a panel vacío (Admin, Administración, Celadora, Chofer).
 - Seed: Hori, Fernanda, Camila, Seba.
 
 ### Fase 2 — Panel Admin: usuarios
 - Crear / eliminar usuarios.
-- Asignar entidad (coordinadora, celadora, chofer).
+- Asignar entidad (Administración, celadora, chofer).
 - Credenciales únicas.
 
 ### Fase 3 — Admin: catálogos
@@ -203,7 +204,7 @@ Notas del ejemplo:
 - Pasajeros (nombre, dirección, activo/inactivo).
 - Choferes + asignación de vehículo.
 
-### Fase 4 — Coordinadora: áreas y asignaciones
+### Fase 4 — Administración: áreas y asignaciones
 - Áreas (seed: San Miguel, Villa de Mayo).
 - Destinos (nombre + domicilio).
 - Asignar celadoras, transportes y pasajeros a áreas.
@@ -217,21 +218,21 @@ Notas del ejemplo:
 
 ### Fase 6 — Paneles operativos
 - **Celadora:** iniciar/fin (subida pasajeros), asistencia, informe; pestañas Principal (grillas nuevas) / Historial (completadas).
-- **Chofer:** inicio/fin (manejo), Maps/Waze, asistencia si sin celadora, informe; Principal / Historial / **Vehículo asignado** (detalle + novedades visibles para Admin y Coordinadora).
+- **Chofer:** inicio/fin (manejo), Maps/Waze, asistencia si sin celadora, informe; Principal / Historial / **Vehículo asignado** (detalle + novedades visibles para Admin y Administración).
 
 ### Fase 7 — Admin: métricas y publicaciones
-- **Informe:** por celadora y por chofer (historial de informes, duración por ruta, destinos/asistencia o combustible en barras). Filtro por fechas. Admin + Coordinadora.
+- **Informe:** por celadora y por chofer (historial de informes, duración por ruta, destinos/asistencia o combustible en barras). Filtro por fechas. Admin + Administración.
 - Apartado futuro de **Pasajeros** (métricas propias) pendiente.
-- **Publicaciones:** avisos con vigencia; el Admin elige destinatarios (coordinadoras, celadoras y/o choferes).
+- **Publicaciones:** avisos con vigencia; el Admin elige destinatarios (Administración, celadoras y/o choferes).
 
 ### Fase 8 — Respaldo de historiales
-- Pestaña **Respaldo** (Admin + Coordinadora): filtros por fechas / área / transporte / pasajero.
+- Pestaña **Respaldo** (Admin + Administración): filtros por fechas / área / transporte / pasajero.
 - Descargar CSV (Excel) de grillas y de asistencias.
 - Imprimir / Guardar PDF (ventana de impresión del navegador) con itinerario, asistencias, tiempos e informes.
 
 ---
 
-## Coordinadora — capacidades
+## Administración — capacidades
 
 ### Grillas / itinerario
 - Al elegir **Ingresos** o **Salidas**, las acciones **sube/baja** se invierten (pasajero ↔ destino).
@@ -239,7 +240,7 @@ Notas del ejemplo:
 - **Salidas desde Ingresos:** botón para armar la grilla con quienes **asistieron** ese día; transporte y celadora quedan editables; se pueden agregar filas extra.
 
 ### Áreas
-- Gestionar “Áreas” separadas por **nombre** (definido por la coordinadora).
+- Gestionar “Áreas” separadas por **nombre** (definido por Administración).
 - **Seed inicial:** crear 2 áreas:
   - San Miguel
   - Villa de Mayo
@@ -248,7 +249,7 @@ Notas del ejemplo:
 - Nombre
 - Domicilio
 
-### Asignaciones que hace la coordinadora
+### Asignaciones que hace la Administración
 - Asignar **celadoras** a un Área.
 - Asignar **transportes** a un Área.
 - Asignar **celadoras a transportes**.
@@ -288,7 +289,7 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 ## Celadora — capacidades
 
 ### Asignación
-- Se le asigna una **grilla** creada por la coordinadora.
+- Se le asigna una **grilla** creada por la Administración.
 
 ### Control del recorrido
 - **"Iniciar Recorrido"** = momento en que **comienzan a subir los pasajeros**.
@@ -304,17 +305,17 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 
 ### Informe post-recorrido
 - Al finalizar, completa **observaciones adicionales**.
-- Visible **solo para Admin y Coordinadora**.
+- Visible **solo para Admin y Administración**.
 
 ---
 
 ## Chofer — capacidades
 
 ### Asignación
-- Se le asigna una **grilla** creada por la coordinadora.
+- Se le asigna una **grilla** creada por la Administración.
 
 ### Celadora opcional
-- La **coordinadora** indica en la grilla si el recorrido es **con o sin celadora**.
+- La **Administración** indica en la grilla si el recorrido es **con o sin celadora**.
 - Hay recorridos que el chofer puede hacer **sin celadora**.
 - Si el recorrido es **sin celadora**, el chofer debe marcar por cada pasajero:
   - **Asistió**
@@ -337,12 +338,12 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 
 ### Informe post-recorrido
 - Al finalizar, también completa el **informe de observaciones** (igual que la celadora).
-- Visible **solo para Admin y Coordinadora**.
+- Visible **solo para Admin y Administración**.
 - Al cerrar el informe, la grilla pasa de **Principal** a **Historial** (solo lectura).
 
 ### Vehículo asignado
 - Detalle del transporte asignado por Admin.
-- El chofer puede **notificar novedades** del vehículo; Admin y Coordinadora las ven en la pestaña **Novedades**.
+- El chofer puede **notificar novedades** del vehículo; Admin y Administración las ven en la pestaña **Novedades**.
 
 ---
 
@@ -354,14 +355,14 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 |-------|---------|------------|
 | Admin | Hori | 1234 |
 | Admin | Gladis | 1234 |
-| Coordinadora | Fernanda | 1234 |
+| Administración | Fernanda | 1234 |
 | Celadora | Camila | 1234 |
 | Chofer | Seba | 1234 |
 
 ### Reglas de alta / acceso
 - No hay auto-registro ni alta pública.
 - **Admin** crea usuario + contraseña desde su panel.
-- **Admin** asigna **uno o más roles** (Coordinadora, Celadora, Chofer). Ejemplo: Celadora + Coordinadora (responsable de área).
+- **Admin** asigna **uno o más roles** (Administración, Celadora, Chofer). Ejemplo: Celadora + Administración (responsable de área).
 - **Admin** no se asigna ni se elimina desde el panel (solo Hori y Gladis por seed).
 - Credenciales **únicas** por persona.
 - El acceso implica que el Admin ya entregó las credenciales y el/los rol(es) a esa persona.
@@ -383,12 +384,12 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 ## Flujo resumido (hasta ahora)
 
 1. **Admin** crea usuarios, transportes, pasajeros y choferes (con vehículo).
-2. **Coordinadora** organiza Áreas, asignaciones y crea Grillas.
-3. En la grilla, la **coordinadora** marca si va **con o sin celadora**.
+2. **Administración** organiza Áreas, asignaciones y crea Grillas.
+3. En la grilla, la **Administración** marca si va **con o sin celadora**.
 4. Grilla se asigna a **celadora** (si aplica) y **chofer**.
 5. **Chofer** inicia manejo, usa Maps/Waze en direcciones; si no hay celadora, marca asistencias; finaliza e informa.
 6. **Celadora** (si hay) inicia subida de pasajeros, marca asistencias, finaliza e informa.
-7. Admin/Coordinadora ven informes y métricas de tiempos.
+7. Admin y Administración ven informes y métricas de tiempos.
 
 ---
 
@@ -405,11 +406,11 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 - [x] **Fase 1 implementada:** login, paneles vacíos por rol, seed, sin Contacto en landing
 - [x] **Fase 2 implementada:** Admin crea/elimina usuarios y asigna entidad
 - [x] **Fase 3 implementada:** Transportes, pasajeros, asignación de vehículo a choferes
-- [x] **Fase 4 implementada:** Áreas, destinos y asignaciones (Coordinadora)
+- [x] **Fase 4 implementada:** Áreas, destinos y asignaciones (Administración)
 - [x] **Fase 5 implementada:** Grillas (crear, listar, WhatsApp texto, imprimir)
 - [x] **Multi-rol:** un usuario puede tener varios roles (excepto Admin); Gladis Admin en seed
 - [x] **Fase 6 implementada:** Paneles Celadora / Chofer (reloj, asistencia, Maps/Waze, informe)
-- [x] **Fase 7 implementada:** Informe/métricas (Admin + Coordinadora) + publicaciones con vigencia
+- [x] **Fase 7 implementada:** Informe/métricas (Admin + Administración) + publicaciones con vigencia
 - [x] **Fase 8 implementada:** Respaldo historiales (CSV Excel + imprimir/PDF)
 
 ---
@@ -431,14 +432,14 @@ DB reclamada por el usuario.
 ### Hecho en código
 - Landing sin Contacto; CTA hero → WhatsApp; botón **Iniciar sesión**
 - Auth (login/logout/sesión JWT) + middleware por rol
-- Paneles: `/panel/admin`, `/coordinadora`, `/celadora`, `/chofer`
+- Paneles: `/panel/admin`, `/panel/administracion`, `/panel/celadora`, `/panel/chofer`
 - Admin: usuarios, transportes, pasajeros, asignación chofer↔transporte
 - Prisma + PostgreSQL; seed: Hori, Fernanda, Camila, Seba (pass `1234`)
 
 ### Próxima sesión — Fase 4
 - Áreas (seed San Miguel / Villa de Mayo)
 - Destinos
-- Asignaciones de la coordinadora (celadoras, transportes, pasajeros)
+- Asignaciones de la Administración (celadoras, transportes, pasajeros)
 
 ### Recordatorios técnicos
 - Variables locales en `.env` / `.env.local` (no van a Git): `DATABASE_URL`, `AUTH_SECRET`
@@ -453,7 +454,7 @@ DB reclamada por el usuario.
 Además de la base de datos, se implementará (en una fase posterior a grillas/métricas) la posibilidad de:
 
 - **Descargar** historiales (PDF y/o Excel)
-- **Imprimir** historiales desde el panel (Admin / Coordinadora)
+- **Imprimir** historiales desde el panel (Admin / Administración)
 
 Objetivo: que la empresa tenga copia en papel o archivo local como respaldo ante fallos técnicos.
 

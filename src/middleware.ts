@@ -10,7 +10,7 @@ import {
 
 const PANEL_ROLE: Record<string, Role> = {
   '/panel/admin': 'ADMIN',
-  '/panel/coordinadora': 'COORDINADORA',
+  '/panel/administracion': 'ADMINISTRACION',
   '/panel/celadora': 'CELADORA',
   '/panel/chofer': 'CHOFER',
 };
@@ -18,7 +18,7 @@ const PANEL_ROLE: Record<string, Role> = {
 type SessionPayload = { roles?: unknown; role?: unknown };
 
 function rolesFromPayload(payload: SessionPayload): Role[] {
-  const valid: Role[] = ['ADMIN', 'COORDINADORA', 'CELADORA', 'CHOFER'];
+  const valid: Role[] = ['ADMIN', 'ADMINISTRACION', 'CELADORA', 'CHOFER'];
   if (Array.isArray(payload.roles)) {
     return payload.roles.filter((r): r is Role => valid.includes(r as Role));
   }
@@ -32,6 +32,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const secret = process.env.AUTH_SECRET;
+
+  // Redirect bookmarks de la ruta antigua
+  if (pathname.startsWith('/panel/coordinadora')) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.replace(/^\/panel\/coordinadora/, '/panel/administracion');
+    return NextResponse.redirect(url, 308);
+  }
 
   // Sin AUTH_SECRET no se puede validar sesión: dejar pasar /login (evitar bucle)
   // y mandar paneles a login una sola vez.
@@ -66,15 +73,17 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    const requiredRole = Object.entries(PANEL_ROLE).find(([path]) =>
-      pathname.startsWith(path),
-    )?.[1];
+    // Ordenar paths más largos primero para que /panel/administracion
+    // no matchee el prefijo /panel/admin.
+    const requiredRole = Object.entries(PANEL_ROLE)
+      .sort(([a], [b]) => b.length - a.length)
+      .find(([path]) => pathname === path || pathname.startsWith(`${path}/`))?.[1];
 
-    // Admin puede entrar al panel de coordinadora para soporte
-    const isAdminOnCoord =
-      hasRole(sessionUser, 'ADMIN') && pathname.startsWith('/panel/coordinadora');
+    // Admin puede entrar al panel de Administración para soporte
+    const isAdminOnAdministracion =
+      hasRole(sessionUser, 'ADMIN') && pathname.startsWith('/panel/administracion');
 
-    if (requiredRole && !hasRole(sessionUser, requiredRole) && !isAdminOnCoord) {
+    if (requiredRole && !hasRole(sessionUser, requiredRole) && !isAdminOnAdministracion) {
       return NextResponse.redirect(new URL(defaultPanelPath(sessionUser), request.url));
     }
   }

@@ -107,10 +107,9 @@ export async function GET(_request: Request, { params }: Params) {
 
     let asistio = 0;
     let cancelo = 0;
-    let noSePresento = 0;
     const faltasDetalle: {
       id: string;
-      estado: 'CANCELO' | 'NO_SE_PRESENTO';
+      estado: 'CANCELO';
       motivoCancelacion: string | null;
       fecha: string;
       tipoItinerario: string;
@@ -120,7 +119,7 @@ export async function GET(_request: Request, { params }: Params) {
     }[] = [];
     const registros: {
       id: string;
-      estado: 'ASISTIO' | 'CANCELO' | 'NO_SE_PRESENTO';
+      estado: 'ASISTIO' | 'CANCELO';
       motivoCancelacion: string | null;
       grilla: {
         id: string;
@@ -148,9 +147,11 @@ export async function GET(_request: Request, { params }: Params) {
         ? `${a.grilla.chofer.username} + ${a.grilla.celadora.username}`
         : a.grilla.chofer.username;
 
+      const estadoNorm = a.estado === 'ASISTIO' ? ('ASISTIO' as const) : ('CANCELO' as const);
+
       registros.push({
         id: a.id,
-        estado: a.estado,
+        estado: estadoNorm,
         motivoCancelacion: a.motivoCancelacion,
         grilla: {
           id: a.grilla.id,
@@ -165,25 +166,13 @@ export async function GET(_request: Request, { params }: Params) {
         },
       });
 
-      if (a.estado === 'ASISTIO') {
+      if (estadoNorm === 'ASISTIO') {
         asistio += 1;
-      } else if (a.estado === 'CANCELO') {
+      } else {
         cancelo += 1;
         faltasDetalle.push({
           id: a.id,
           estado: 'CANCELO',
-          motivoCancelacion: a.motivoCancelacion,
-          fecha: a.grilla.fecha.toISOString(),
-          tipoItinerario: a.grilla.tipoItinerario,
-          area: a.grilla.area.nombre,
-          transporte: a.grilla.transporte.nombre,
-          responsables,
-        });
-      } else {
-        noSePresento += 1;
-        faltasDetalle.push({
-          id: a.id,
-          estado: 'NO_SE_PRESENTO',
           motivoCancelacion: a.motivoCancelacion,
           fecha: a.grilla.fecha.toISOString(),
           tipoItinerario: a.grilla.tipoItinerario,
@@ -273,15 +262,14 @@ export async function GET(_request: Request, { params }: Params) {
         resumen: {
           totalRegistros: unique.length,
           asistio,
-          faltas: cancelo + noSePresento,
+          faltas: cancelo,
           cancelo,
-          noSePresento,
         },
         faltasDetalle,
         registros,
         grafica: [
           { label: 'Asistencias', value: asistio },
-          { label: 'Faltas', value: cancelo + noSePresento },
+          { label: 'Faltas', value: cancelo },
         ],
       },
     });

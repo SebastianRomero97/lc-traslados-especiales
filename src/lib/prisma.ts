@@ -2,7 +2,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@/generated/prisma/client';
 
 /** Subir este número cuando un cambio de schema rompa el hot-reload (cliente viejo en global). */
-const PRISMA_CLIENT_REV = 10;
+const PRISMA_CLIENT_REV = 15;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

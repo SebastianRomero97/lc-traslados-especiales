@@ -143,8 +143,14 @@ export function formatFechaGrilla(fecha: Date | string): string {
   return `${day}/${month}/${year}`;
 }
 
-export function todayFechaInput(): string {
-  return new Date().toISOString().slice(0, 10);
+export function todayFechaInput(now = new Date()): string {
+  // Día civil de operación LC (no UTC).
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
 }
 
 /** Clave YYYY-MM-DD comparable con todayFechaInput / inputs date. */
@@ -443,6 +449,8 @@ export type ResourceConflict = {
   areaNombre: string;
   grillaId: string;
   grillaNombre: string;
+  /** Estado de la grilla en conflicto (si se conoce). */
+  estado?: import('@/lib/grilla-estado').EstadoGrilla;
 };
 
 export function labelConflictKind(kind: ResourceConflictKind): string {
@@ -465,5 +473,51 @@ export function formatConflictMessage(
   targetAreaNombre: string,
 ): string {
   return `Este ${labelConflictKind(conflict.kind)} (${conflict.resourceLabel}) ya está asignado en ${conflict.areaNombre}. ¿Desea cambiarlo y asignarlo en ${targetAreaNombre}?`;
+}
+
+/** Parsea "HH:MM" a minutos desde medianoche. */
+export function parseHoraMinutos(hora: string | null | undefined): number | null {
+  const raw = hora?.trim() ?? '';
+  const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh > 23 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+export function formatHoraMinutos(total: number): string {
+  const normalized = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = Math.floor(normalized / 60);
+  const mm = normalized % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/**
+ * Sugiere horarios hacia atrás desde destinos con hora fija.
+ * Solo completa filas sin hora; no pisa horarios ya cargados.
+ */
+export function sugerirHorariosHaciaAtras(
+  filas: { hora?: string | null; destinoId?: string | null }[],
+  minutosEntreParadas = 15,
+): (string | null)[] {
+  const gap = Math.max(1, minutosEntreParadas);
+  const result: (string | null)[] = filas.map((f) => f.hora?.trim() || null);
+
+  for (let i = 0; i < filas.length; i++) {
+    if (!filas[i]?.destinoId) continue;
+    const anchor = parseHoraMinutos(result[i]);
+    if (anchor == null) continue;
+
+    let cursor = anchor;
+    for (let j = i - 1; j >= 0; j--) {
+      if (filas[j]?.destinoId && result[j]) break;
+      if (result[j]) continue;
+      cursor -= gap;
+      result[j] = formatHoraMinutos(cursor);
+    }
+  }
+
+  return result;
 }
 

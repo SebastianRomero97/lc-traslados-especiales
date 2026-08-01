@@ -8,7 +8,7 @@ import { hasRole } from '@/lib/roles';
 
 type Params = { params: Promise<{ id: string }> };
 
-const ESTADOS: EstadoAsistencia[] = ['ASISTIO', 'CANCELO', 'NO_SE_PRESENTO'];
+const ESTADOS: EstadoAsistencia[] = ['ASISTIO', 'CANCELO'];
 
 export async function PATCH(request: Request, { params }: Params) {
   const auth = await requireOperativoApi(['CELADORA', 'CHOFER']);
@@ -48,6 +48,18 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!grilla) {
       return NextResponse.json({ message: 'Grilla no encontrada.' }, { status: 404 });
     }
+    if (grilla.estado !== 'APROBADA' && grilla.estado !== 'EN_CURSO') {
+      return NextResponse.json(
+        { message: 'La grilla aún no está lista para registrar asistencia.' },
+        { status: 400 },
+      );
+    }
+    if (grilla.cierreTipo) {
+      return NextResponse.json(
+        { message: 'Esta jornada ya fue cerrada. No se pueden modificar asistencias.' },
+        { status: 400 },
+      );
+    }
     if (!canMarkAsistencia(grilla, auth.user.id, body.rol)) {
       return NextResponse.json(
         {
@@ -82,27 +94,60 @@ export async function PATCH(request: Request, { params }: Params) {
       );
     }
 
-    const asistencia = await prisma.asistencia.upsert({
-      where: {
-        grillaId_pasajeroNombre: {
+    const pasajeroId = body.pasajeroId?.trim() || null;
+
+    // Debe existir en las filas de la grilla (por id o por nombre).
+    const enGrilla = grilla.filas.some((f) => {
+      if (pasajeroId && f.pasajeroId) return f.pasajeroId === pasajeroId;
+      return f.pasajeroNombre.trim().toLowerCase() === nombre.toLowerCase();
+    });
+    if (!enGrilla) {
+      return NextResponse.json(
+        { message: 'Ese pasajero no figura en esta grilla.' },
+        { status: 400 },
+      );
+    }
+
+    const asistencia = await prisma.$transaction(async (tx) => {
+      if (pasajeroId) {
+        const existingById = await tx.asistencia.findFirst({
+          where: { grillaId: id, pasajeroId },
+        });
+        if (existingById) {
+          return tx.asistencia.update({
+            where: { id: existingById.id },
+            data: {
+              estado,
+              motivoCancelacion: motivo,
+              pasajeroNombre: nombre,
+              registradoPorId: auth.user.id,
+            },
+          });
+        }
+      }
+
+      return tx.asistencia.upsert({
+        where: {
+          grillaId_pasajeroNombre: {
+            grillaId: id,
+            pasajeroNombre: nombre,
+          },
+        },
+        create: {
           grillaId: id,
           pasajeroNombre: nombre,
+          pasajeroId,
+          estado,
+          motivoCancelacion: motivo,
+          registradoPorId: auth.user.id,
         },
-      },
-      create: {
-        grillaId: id,
-        pasajeroNombre: nombre,
-        pasajeroId: body.pasajeroId || null,
-        estado,
-        motivoCancelacion: motivo,
-        registradoPorId: auth.user.id,
-      },
-      update: {
-        estado,
-        motivoCancelacion: motivo,
-        pasajeroId: body.pasajeroId || undefined,
-        registradoPorId: auth.user.id,
-      },
+        update: {
+          estado,
+          motivoCancelacion: motivo,
+          ...(pasajeroId ? { pasajeroId } : {}),
+          registradoPorId: auth.user.id,
+        },
+      });
     });
 
     return NextResponse.json({
