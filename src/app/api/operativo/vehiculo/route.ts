@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { describeCaughtError } from '@/lib/api-errors';
 import { requireOperativoApi } from '@/lib/operativo-auth';
+import { estadoVtvFromFecha } from '@/lib/transporte.utils';
 
-/** Vehículo asignado al chofer + sus novedades recientes. */
+/** Vehículo asignado al chofer + historial de novedades (solo lectura de ficha). */
 export async function GET() {
   const auth = await requireOperativoApi(['CHOFER']);
   if ('error' in auth) return auth.error;
@@ -18,6 +19,11 @@ export async function GET() {
           nombre: true,
           tipo: true,
           capacidad: true,
+          anio: true,
+          patente: true,
+          servicePendiente: true,
+          serviceFecha: true,
+          vtvVenceAt: true,
           active: true,
         },
       },
@@ -36,17 +42,23 @@ export async function GET() {
       reportadoPorId: auth.user.id,
     },
     orderBy: { createdAt: 'desc' },
-    take: 20,
+    take: 30,
     select: {
       id: true,
       mensaje: true,
+      estado: true,
+      detalleAdmin: true,
       createdAt: true,
+      updatedAt: true,
     },
   });
 
   return NextResponse.json({
     data: {
-      transporte: user.transporte,
+      transporte: {
+        ...user.transporte,
+        vtvEstado: estadoVtvFromFecha(user.transporte.vtvVenceAt),
+      },
       novedades,
     },
   });
@@ -83,18 +95,25 @@ export async function POST(request: Request) {
         mensaje,
         transporteId: user.transporteId,
         reportadoPorId: auth.user.id,
+        estado: 'PENDIENTE_REVISION',
       },
       select: {
         id: true,
         mensaje: true,
+        estado: true,
+        detalleAdmin: true,
         createdAt: true,
+        updatedAt: true,
         transporte: { select: { id: true, nombre: true, tipo: true } },
         reportadoPor: { select: { id: true, username: true } },
       },
     });
 
     return NextResponse.json(
-      { data: novedad, message: 'Novedad enviada. Admin y Administración podrán verla.' },
+      {
+        data: novedad,
+        message: 'Novedad enviada. Quedó registrada en la ficha del vehículo.',
+      },
       { status: 201 },
     );
   } catch (error) {

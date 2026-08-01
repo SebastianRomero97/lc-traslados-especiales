@@ -1,12 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
+import { labelEstadoNovedad } from '@/lib/transporte.utils';
 
 type Novedad = {
   id: string;
   mensaje: string;
+  estado: 'PENDIENTE_REVISION' | 'RESUELTO';
+  detalleAdmin: string | null;
   createdAt: string;
+  updatedAt: string;
   transporte: { id: string; nombre: string; tipo: string };
   reportadoPor: { id: string; username: string };
 };
@@ -15,6 +20,7 @@ export function NovedadesVehiculoPanel() {
   const popup = usePanelPopup();
   const [items, setItems] = useState<Novedad[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detalleDraft, setDetalleDraft] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,13 +44,30 @@ export function NovedadesVehiculoPanel() {
     void load();
   }, [load]);
 
+  const updateNovedad = async (
+    id: string,
+    patch: { estado?: 'PENDIENTE_REVISION' | 'RESUELTO'; detalleAdmin?: string | null },
+  ) => {
+    const response = await fetch('/api/novedades-vehiculo', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    if (!response.ok) {
+      popup.error(await readApiError(response, 'No se pudo actualizar la novedad.'));
+      return;
+    }
+    popup.success('Novedad actualizada.');
+    await load();
+  };
+
   return (
     <div className="admin-section">
       {popup.popupNode}
       <section className="panel-card">
         <h2>Novedades de vehículos</h2>
         <p className="panel-card__desc">
-          Avisos enviados por los choferes sobre el estado de sus vehículos.
+          Historial reportado por choferes. Podés marcar estado y dejar un detalle.
         </p>
 
         {loading ? (
@@ -57,7 +80,8 @@ export function NovedadesVehiculoPanel() {
               <li key={item.id} className="novedades-vehiculo-item">
                 <div className="novedades-vehiculo-item__meta">
                   <strong>
-                    {item.transporte.nombre} ({item.transporte.tipo})
+                    {item.transporte.nombre} ({item.transporte.tipo}) ·{' '}
+                    {labelEstadoNovedad(item.estado)}
                   </strong>
                   <span>
                     {item.reportadoPor.username} ·{' '}
@@ -65,6 +89,50 @@ export function NovedadesVehiculoPanel() {
                   </span>
                 </div>
                 <p>{item.mensaje}</p>
+                {item.detalleAdmin && (
+                  <p className="transporte-ficha__detalle">Admin: {item.detalleAdmin}</p>
+                )}
+                <div className="admin-actions">
+                  <button
+                    type="button"
+                    className="btn btn--outline btn--sm"
+                    disabled={item.estado === 'PENDIENTE_REVISION'}
+                    onClick={() =>
+                      void updateNovedad(item.id, { estado: 'PENDIENTE_REVISION' })
+                    }
+                  >
+                    Pendiente de revisión
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--outline btn--sm"
+                    disabled={item.estado === 'RESUELTO'}
+                    onClick={() => void updateNovedad(item.id, { estado: 'RESUELTO' })}
+                  >
+                    Resuelto
+                  </button>
+                </div>
+                <div className="transporte-ficha__detalle-form">
+                  <textarea
+                    rows={2}
+                    placeholder="Detalle / comentario del Admin"
+                    value={detalleDraft[item.id] ?? item.detalleAdmin ?? ''}
+                    onChange={(e) =>
+                      setDetalleDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    onClick={() =>
+                      void updateNovedad(item.id, {
+                        detalleAdmin: detalleDraft[item.id] ?? item.detalleAdmin,
+                      })
+                    }
+                  >
+                    Guardar detalle
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

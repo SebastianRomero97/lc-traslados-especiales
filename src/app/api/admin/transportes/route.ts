@@ -2,6 +2,31 @@ import { NextResponse } from 'next/server';
 import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
+import { estadoVtvFromFecha } from '@/lib/transporte.utils';
+
+const transporteInclude = {
+  choferes: {
+    where: { roles: { has: 'CHOFER' as const } },
+    select: { id: true, username: true },
+  },
+  novedades: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 30,
+    select: {
+      id: true,
+      mensaje: true,
+      estado: true,
+      detalleAdmin: true,
+      createdAt: true,
+      updatedAt: true,
+      reportadoPor: { select: { id: true, username: true } },
+    },
+  },
+};
+
+function withVtvEstado<T extends { vtvVenceAt: Date | null }>(t: T) {
+  return { ...t, vtvEstado: estadoVtvFromFecha(t.vtvVenceAt) };
+}
 
 export async function GET() {
   const auth = await requireAdminApi();
@@ -9,15 +34,10 @@ export async function GET() {
 
   const transportes = await prisma.transporte.findMany({
     orderBy: { nombre: 'asc' },
-    include: {
-      choferes: {
-        where: { roles: { has: 'CHOFER' } },
-        select: { id: true, username: true },
-      },
-    },
+    include: transporteInclude,
   });
 
-  return NextResponse.json({ data: transportes });
+  return NextResponse.json({ data: transportes.map(withVtvEstado) });
 }
 
 export async function POST(request: Request) {
@@ -61,10 +81,14 @@ export async function POST(request: Request) {
         capacidad,
         active: true,
       },
+      include: transporteInclude,
     });
 
     return NextResponse.json(
-      { data: transporte, message: 'Transporte creado.' },
+      {
+        data: withVtvEstado(transporte),
+        message: 'Transporte creado. Completá la ficha cuando quieras.',
+      },
       { status: 201 },
     );
   } catch (error) {

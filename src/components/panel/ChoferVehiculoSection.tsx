@@ -3,19 +3,34 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
+import {
+  dateToInput,
+  labelEstadoNovedad,
+  labelEstadoVtv,
+  type EstadoVtv,
+} from '@/lib/transporte.utils';
 
 type Transporte = {
   id: string;
   nombre: string;
   tipo: string;
   capacidad: number | null;
+  anio: number | null;
+  patente: string | null;
+  servicePendiente: string | null;
+  serviceFecha: string | null;
+  vtvVenceAt: string | null;
+  vtvEstado: EstadoVtv;
   active: boolean;
 };
 
 type Novedad = {
   id: string;
   mensaje: string;
+  estado: 'PENDIENTE_REVISION' | 'RESUELTO';
+  detalleAdmin: string | null;
   createdAt: string;
+  updatedAt: string;
 };
 
 export function ChoferVehiculoSection() {
@@ -109,14 +124,43 @@ export function ChoferVehiculoSection() {
                 <dd>{transporte.capacidad ?? '—'}</dd>
               </div>
               <div>
+                <dt>Año</dt>
+                <dd>{transporte.anio ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Patente</dt>
+                <dd>{transporte.patente ?? '—'}</dd>
+              </div>
+              <div>
+                <dt>Service pendiente</dt>
+                <dd>
+                  {transporte.servicePendiente ?? '—'}
+                  {transporte.serviceFecha
+                    ? ` (${dateToInput(transporte.serviceFecha)})`
+                    : ''}
+                </dd>
+              </div>
+              <div>
+                <dt>VTV</dt>
+                <dd>
+                  {transporte.vtvVenceAt
+                    ? `${dateToInput(transporte.vtvVenceAt)} · ${labelEstadoVtv(transporte.vtvEstado)}`
+                    : '—'}
+                </dd>
+              </div>
+              <div>
                 <dt>Estado</dt>
                 <dd>{transporte.active ? 'Activo' : 'No disponible'}</dd>
               </div>
             </dl>
+            <p className="panel-card__desc">
+              Estos datos los carga el Admin. Vos solo podés consultarlos y reportar novedades.
+            </p>
 
             <h3 className="chofer-vehiculo__subtitulo">Notificar novedad</h3>
             <p className="panel-card__desc">
-              Cualquier novedad (falla, ruido, luces, etc.) queda visible para Admin y Administración.
+              La novedad se guarda en el historial de este vehículo. Admin puede marcarla como
+              pendiente o resuelta.
             </p>
             <form className="chofer-vehiculo__form" onSubmit={handleSubmit}>
               <textarea
@@ -142,9 +186,9 @@ export function ChoferVehiculoSection() {
 
       {transporte && (
         <section className="panel-card">
-          <h2>Tus novedades enviadas</h2>
+          <h2>Historial de novedades</h2>
           {novedades.length === 0 ? (
-            <p className="panel-card__desc">Todavía no enviaste novedades sobre este vehículo.</p>
+            <p className="panel-card__desc">Todavía no hay novedades sobre este vehículo.</p>
           ) : (
             <ul className="chofer-vehiculo__novedades">
               {novedades.map((n) => (
@@ -152,7 +196,12 @@ export function ChoferVehiculoSection() {
                   <time dateTime={n.createdAt}>
                     {new Date(n.createdAt).toLocaleString('es-AR')}
                   </time>
-                  <p>{n.mensaje}</p>
+                  <p>
+                    <strong>{labelEstadoNovedad(n.estado)}</strong> — {n.mensaje}
+                  </p>
+                  {n.detalleAdmin && (
+                    <p className="chofer-vehiculo__detalle-admin">Admin: {n.detalleAdmin}</p>
+                  )}
                 </li>
               ))}
             </ul>

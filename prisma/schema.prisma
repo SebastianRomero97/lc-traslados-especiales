@@ -81,9 +81,19 @@ model User {
 
 model Transporte {
   id        String   @id @default(cuid())
+  /// Identificador visible (ej. Master). El tipo es la categoría (ej. Minibus).
   nombre    String
   tipo      String
   capacidad Int?
+  /// Año del vehículo (ficha técnica).
+  anio      Int?
+  patente   String?
+  /// Descripción libre del service pendiente.
+  servicePendiente String?
+  /// Fecha asociada al service pendiente (opcional).
+  serviceFecha     DateTime? @db.Date
+  /// Vencimiento VTV; el estado vigente/vencida se calcula desde esta fecha.
+  vtvVenceAt       DateTime? @db.Date
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -99,6 +109,12 @@ model Pasajero {
   id        String   @id @default(cuid())
   nombre    String
   direccion String
+  /// Documento (opcional, ficha complementaria).
+  dni       String?
+  /// Fecha de cumpleaños (opcional).
+  fechaCumpleanos DateTime? @db.Date
+  /// Edad manual (opcional). Si hay cumpleaños, la UI puede calcularla.
+  edad      Int?
   /// Ubicación para el mapa interno (no reemplaza el texto de dirección).
   lat       Float?
   lon       Float?
@@ -108,9 +124,24 @@ model Pasajero {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  areas AreaPasajero[]
-  filas GrillaFila[]
+  areas     AreaPasajero[]
+  contactos PasajeroContacto[]
+  filas     GrillaFila[]
   asistencias Asistencia[]
+}
+
+/// Teléfono / contacto de un pasajero (varios por ficha).
+model PasajeroContacto {
+  id         String   @id @default(cuid())
+  pasajeroId String
+  pasajero   Pasajero @relation(fields: [pasajeroId], references: [id], onDelete: Cascade)
+  /// Nombre o relación (Madre, Padre, Tutor, etc.).
+  relacion   String
+  telefono   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([pasajeroId])
 }
 
 model Area {
@@ -331,18 +362,28 @@ model Asistencia {
   @@index([pasajeroId])
 }
 
-/// Novedad / aviso del chofer sobre su vehículo (visible Admin y Coordinadora)
+enum EstadoNovedadVehiculo {
+  PENDIENTE_REVISION
+  RESUELTO
+}
+
+/// Novedad / aviso del chofer sobre su vehículo (historial en la ficha del vehículo)
 model NovedadVehiculo {
   id           String   @id @default(cuid())
   mensaje      String
+  estado       EstadoNovedadVehiculo @default(PENDIENTE_REVISION)
+  /// Comentario / detalle del Admin sobre la novedad.
+  detalleAdmin String?
   transporteId String
   transporte   Transporte @relation(fields: [transporteId], references: [id], onDelete: Cascade)
   reportadoPorId String
   reportadoPor   User   @relation("NovedadVehiculoAutor", fields: [reportadoPorId], references: [id], onDelete: Restrict)
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   @@index([transporteId])
   @@index([createdAt])
+  @@index([estado])
 }
 
 /// Aviso del Admin hacia roles operativos (con vigencia)
