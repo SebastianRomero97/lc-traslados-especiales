@@ -89,6 +89,7 @@ export async function GET(request: Request) {
       },
       select: {
         id: true,
+        nombre: true,
         fecha: true,
         tipoItinerario: true,
         nota: true,
@@ -112,6 +113,7 @@ export async function GET(request: Request) {
             hora: true,
             direccion: true,
             pasajeroNombre: true,
+            pasajeroId: true,
             accion: true,
             trasbordoHacia: true,
           },
@@ -140,6 +142,7 @@ export async function GET(request: Request) {
       }
       return {
         id: g.id,
+        nombre: g.nombre,
         fecha: g.fecha.toISOString(),
         tipoItinerario: g.tipoItinerario,
         area: g.area.nombre,

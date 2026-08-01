@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
-import { hasAnyRole, hasRole } from '@/lib/roles';
+import { hasAnyRole } from '@/lib/roles';
 import { describeCaughtError } from '@/lib/api-errors';
 
 const novedadSelect = {
@@ -34,14 +34,14 @@ export async function GET() {
   return NextResponse.json({ data: novedades });
 }
 
-/** Admin actualiza estado / detalle de una novedad. */
+/** Admin o Coordinadora actualiza estado / detalle de una novedad. */
 export async function PATCH(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ message: 'No autenticado.' }, { status: 401 });
   }
-  if (!hasRole(session, 'ADMIN')) {
-    return NextResponse.json({ message: 'Solo Admin puede gestionar novedades.' }, { status: 403 });
+  if (!hasAnyRole(session, ['ADMIN', 'COORDINADORA'])) {
+    return NextResponse.json({ message: 'No autorizado.' }, { status: 403 });
   }
 
   try {
@@ -75,6 +75,10 @@ export async function PATCH(request: Request) {
         body.detalleAdmin === null || body.detalleAdmin === ''
           ? null
           : String(body.detalleAdmin).trim();
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ message: 'No hay cambios para guardar.' }, { status: 400 });
     }
 
     const novedad = await prisma.novedadVehiculo.update({

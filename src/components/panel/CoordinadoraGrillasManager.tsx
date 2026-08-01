@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { readApiError } from '@/lib/api-errors';
 import {
   buildGrillaTitulo,
-  buildGrillaWhatsAppText,
   daysInMonth,
   fechaGrillaKey,
   formatAccionFila,
@@ -24,6 +23,12 @@ import {
   type AccionParada,
   type TipoGrupoItinerario,
 } from '@/lib/grilla.utils';
+import {
+  buildGrillaWhatsAppShareText,
+  downloadGrillaPdf,
+  openGrillaPrintWindow,
+  type GrillaPrintInput,
+} from '@/lib/grilla-print';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import {
   GrillaTablero,
@@ -276,64 +281,85 @@ export function CoordinadoraGrillasManager({
     await loadGrillas(areaId);
   };
 
-  const shareWhatsApp = (grilla: GrillaListItem) => {
-    const baseTitulo = buildGrillaTitulo({
-      tipoItinerario: grilla.tipoItinerario,
-      transporteNombre: grilla.transporte.nombre,
-      fecha: grilla.fecha,
-    });
-    const titulo = grilla.nombre ? `${grilla.nombre} — ${baseTitulo}` : baseTitulo;
-    const text = buildGrillaWhatsAppText({
-      titulo,
-      tipoTransporte: grilla.transporte.tipo,
-      choferNombre: grilla.chofer.username,
-      celadoraNombre: grilla.celadora?.username ?? null,
-      conCeladora: grilla.conCeladora,
-      nota: grilla.nota,
-      filas: grilla.filas,
-    });
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+  const toPrintInput = (grilla: {
+    nombre: string;
+    fecha: string;
+    tipoItinerario: string;
+    area: { nombre: string };
+    transporte: { nombre: string };
+    chofer: { username: string };
+    celadora: { username: string } | null;
+    conCeladora: boolean;
+    filas: { pasajeroNombre: string; pasajeroId?: string | null }[];
+    asistencias?: {
+      pasajeroNombre: string;
+      estado: string;
+      motivoCancelacion?: string | null;
+    }[];
+  }): GrillaPrintInput => ({
+    nombre: grilla.nombre,
+    fecha: grilla.fecha,
+    tipoItinerario: grilla.tipoItinerario,
+    areaNombre: grilla.area.nombre,
+    transporteNombre: grilla.transporte.nombre,
+    choferNombre: grilla.chofer.username,
+    celadoraNombre: grilla.celadora?.username ?? null,
+    conCeladora: grilla.conCeladora,
+    filas: grilla.filas,
+    asistencias: grilla.asistencias,
+  });
+
+  const loadGrillaExport = async (id: string) => {
+    const response = await fetch(`/api/coord/grillas/${id}`);
+    const body = await response.json();
+    if (!response.ok) {
+      throw new Error(body.message ?? 'No se pudo cargar la grilla.');
+    }
+    return body.data as {
+      nombre: string;
+      fecha: string;
+      tipoItinerario: string;
+      area: { nombre: string };
+      transporte: { nombre: string };
+      chofer: { username: string };
+      celadora: { username: string } | null;
+      conCeladora: boolean;
+      filas: { pasajeroNombre: string; pasajeroId?: string | null }[];
+      asistencias?: {
+        pasajeroNombre: string;
+        estado: string;
+        motivoCancelacion?: string | null;
+      }[];
+    };
   };
 
-  const printGrilla = (grilla: GrillaListItem) => {
-    const baseTitulo = buildGrillaTitulo({
-      tipoItinerario: grilla.tipoItinerario,
-      transporteNombre: grilla.transporte.nombre,
-      fecha: grilla.fecha,
-    });
-    const titulo = grilla.nombre ? `${grilla.nombre} — ${baseTitulo}` : baseTitulo;
-    const responsables = grilla.conCeladora
-      ? `${grilla.chofer.username} + ${grilla.celadora?.username ?? '—'}`
-      : `${grilla.chofer.username} (sin celadora)`;
-    const rows = grilla.filas
-      .map(
-        (f) =>
-          `<tr><td>${f.hora ?? '—'}</td><td>${f.direccion}</td><td>${formatAccionFila({
-            accion: f.accion,
-            pasajeroNombre: f.pasajeroNombre,
-            trasbordoHacia: f.trasbordoHacia,
-          })}</td></tr>`,
-      )
-      .join('');
-    const html = `<!doctype html><html><head><title>${titulo}</title>
-      <style>
-        body{font-family:Arial,sans-serif;padding:24px;color:#111}
-        h1{font-size:1.2rem} table{width:100%;border-collapse:collapse;margin-top:16px}
-        th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:0.9rem}
-        th{background:#f3f4f6}
-      </style></head><body>
-      <h1>${titulo}</h1>
-      <div><strong>Área:</strong> ${grilla.area.nombre}</div>
-      <div><strong>Responsables:</strong> ${responsables}</div>
-      ${grilla.nota ? `<div><strong>Nota:</strong> ${grilla.nota}</div>` : ''}
-      <table><thead><tr><th>Hora</th><th>Parada</th><th>Acción</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-      <script>window.onload=()=>window.print()</script>
-      </body></html>`;
-    const w = window.open('', '_blank', 'noopener,noreferrer');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
+  const shareWhatsApp = async (grilla: GrillaListItem) => {
+    try {
+      const full = await loadGrillaExport(grilla.id);
+      const input = toPrintInput(full);
+      await downloadGrillaPdf(input);
+      const text = buildGrillaWhatsAppShareText(input);
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      popup.success('PDF descargado. Adjuntarlo en el chat de WhatsApp.');
+    } catch (error) {
+      popup.error(
+        error instanceof Error ? error.message : 'No se pudo preparar el PDF para WhatsApp.',
+      );
+    }
+  };
+
+  const printGrilla = async (grilla: GrillaListItem) => {
+    try {
+      const full = await loadGrillaExport(grilla.id);
+      const ok = openGrillaPrintWindow(toPrintInput(full));
+      if (!ok) {
+        popup.error('Permití ventanas emergentes para imprimir o guardar PDF.');
+      }
+    } catch (error) {
+      popup.error(
+        error instanceof Error ? error.message : 'No se pudo preparar la impresión.',
+      );
+    }
   };
 
   const renderAcciones = (g: GrillaListItem, compact = false) => (
@@ -355,10 +381,18 @@ export function CoordinadoraGrillasManager({
       <button type="button" className="btn btn--outline btn--sm" onClick={() => applyGrillaBase(g)}>
         Usar como base
       </button>
-      <button type="button" className="btn btn--outline btn--sm" onClick={() => shareWhatsApp(g)}>
+      <button
+        type="button"
+        className="btn btn--outline btn--sm"
+        onClick={() => void shareWhatsApp(g)}
+      >
         WhatsApp
       </button>
-      <button type="button" className="btn btn--outline btn--sm" onClick={() => printGrilla(g)}>
+      <button
+        type="button"
+        className="btn btn--outline btn--sm"
+        onClick={() => void printGrilla(g)}
+      >
         Imprimir
       </button>
       <button

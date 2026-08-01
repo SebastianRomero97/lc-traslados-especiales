@@ -8,6 +8,7 @@ type Opcion = { id: string; nombre: string; tipo?: string };
 
 type GrillaResumen = {
   id: string;
+  nombre: string;
   fecha: string;
   tipoItinerario: string;
   area: string;
@@ -237,6 +238,7 @@ export function RespaldoHistorialPanel() {
                   <thead>
                     <tr>
                       <th>Fecha</th>
+                      <th>Nombre</th>
                       <th>Itinerario</th>
                       <th>Área</th>
                       <th>Transporte</th>
@@ -249,6 +251,7 @@ export function RespaldoHistorialPanel() {
                     {grillas.map((g) => (
                       <tr key={g.id}>
                         <td>{formatFechaGrilla(g.fecha)}</td>
+                        <td>{g.nombre}</td>
                         <td>{labelTipoItinerario(g.tipoItinerario)}</td>
                         <td>{g.area}</td>
                         <td>

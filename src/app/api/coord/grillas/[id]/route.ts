@@ -42,6 +42,14 @@ const grillaInclude = {
       pasajero: { select: { id: true, nombre: true, direccion: true } },
     },
   },
+  asistencias: {
+    select: {
+      pasajeroNombre: true,
+      estado: true,
+      motivoCancelacion: true,
+      pasajeroId: true,
+    },
+  },
 };
 
 export async function GET(_request: Request, { params }: Params) {

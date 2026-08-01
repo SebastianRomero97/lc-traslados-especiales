@@ -48,17 +48,22 @@ export function NovedadesVehiculoPanel() {
     id: string,
     patch: { estado?: 'PENDIENTE_REVISION' | 'RESUELTO'; detalleAdmin?: string | null },
   ) => {
-    const response = await fetch('/api/novedades-vehiculo', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo actualizar la novedad.'));
-      return;
+    try {
+      const response = await fetch('/api/novedades-vehiculo', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...patch }),
+      });
+      if (!response.ok) {
+        popup.error(await readApiError(response, 'No se pudo actualizar la novedad.'));
+        return;
+      }
+      const body = (await response.json()) as { message?: string };
+      popup.success(body.message ?? 'Novedad actualizada.');
+      await load();
+    } catch {
+      popup.error('Error de conexión al actualizar la novedad.');
     }
-    popup.success('Novedad actualizada.');
-    await load();
   };
 
   return (
@@ -95,7 +100,9 @@ export function NovedadesVehiculoPanel() {
                 <div className="admin-actions">
                   <button
                     type="button"
-                    className="btn btn--outline btn--sm"
+                    className={`btn btn--sm${
+                      item.estado === 'PENDIENTE_REVISION' ? ' btn--primary' : ' btn--outline'
+                    }`}
                     disabled={item.estado === 'PENDIENTE_REVISION'}
                     onClick={() =>
                       void updateNovedad(item.id, { estado: 'PENDIENTE_REVISION' })
@@ -105,7 +112,9 @@ export function NovedadesVehiculoPanel() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn--outline btn--sm"
+                    className={`btn btn--sm${
+                      item.estado === 'RESUELTO' ? ' btn--primary' : ' btn--outline'
+                    }`}
                     disabled={item.estado === 'RESUELTO'}
                     onClick={() => void updateNovedad(item.id, { estado: 'RESUELTO' })}
                   >

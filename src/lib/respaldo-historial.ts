@@ -1,7 +1,19 @@
-import { formatAccionFila, formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
+import {
+  formatFechaGrilla,
+  fechaGrillaKey,
+  labelTipoItinerario,
+  modalidadItinerario,
+  sentidoItinerario,
+  type ModalidadItinerario,
+} from '@/lib/grilla.utils';
+import {
+  labelEstadoAsistenciaFicha,
+  normalizeEstadoAsistenciaFicha,
+} from '@/lib/pasajero.utils';
 
 export type RespaldoGrilla = {
   id: string;
+  nombre: string;
   fecha: string;
   tipoItinerario: string;
   area: string;
@@ -25,6 +37,7 @@ export type RespaldoGrilla = {
     hora: string | null;
     direccion: string;
     pasajeroNombre: string;
+    pasajeroId: string | null;
     accion: string;
     trasbordoHacia: string | null;
   }[];
@@ -33,6 +46,17 @@ export type RespaldoGrilla = {
     estado: string;
     motivoCancelacion: string | null;
   }[];
+};
+
+/** Jornada unificada: misma fecha + área + nombre + modalidad (ingreso/salida). */
+export type RespaldoJornada = {
+  fechaKey: string;
+  fecha: string;
+  area: string;
+  nombre: string;
+  modalidad: ModalidadItinerario;
+  ingreso: RespaldoGrilla | null;
+  salida: RespaldoGrilla | null;
 };
 
 export function durationMinutes(start: Date | null, end: Date | null): number | null {
@@ -48,9 +72,169 @@ export function csvEscape(value: string | number | null | undefined): string {
   return s;
 }
 
+function nombreKey(nombre: string): string {
+  return nombre.trim().toLowerCase();
+}
+
+function scoreGrilla(g: RespaldoGrilla): number {
+  return g.filas.length + g.asistencias.length;
+}
+
+function jornadaGroupKey(g: RespaldoGrilla): string {
+  return [
+    fechaGrillaKey(g.fecha),
+    g.area.trim().toLowerCase(),
+    g.nombre.trim().toLowerCase(),
+    modalidadItinerario(g.tipoItinerario),
+  ].join('|');
+}
+
+/** Agrupa grillas sueltas en jornadas (fecha + área + nombre + modalidad). */
+export function agruparRespaldoJornadas(grillas: RespaldoGrilla[]): RespaldoJornada[] {
+  const map = new Map<string, RespaldoJornada>();
+
+  for (const g of grillas) {
+    const key = jornadaGroupKey(g);
+    const sentido = sentidoItinerario(g.tipoItinerario);
+    let jornada = map.get(key);
+    if (!jornada) {
+      jornada = {
+        fechaKey: fechaGrillaKey(g.fecha),
+        fecha: g.fecha,
+        area: g.area,
+        nombre: g.nombre,
+        modalidad: modalidadItinerario(g.tipoItinerario),
+        ingreso: null,
+        salida: null,
+      };
+      map.set(key, jornada);
+    }
+
+    if (sentido === 'INGRESO') {
+      if (!jornada.ingreso || scoreGrilla(g) >= scoreGrilla(jornada.ingreso)) {
+        jornada.ingreso = g;
+      }
+    } else if (!jornada.salida || scoreGrilla(g) >= scoreGrilla(jornada.salida)) {
+      jornada.salida = g;
+    }
+  }
+
+  return [...map.values()].sort((a, b) => {
+    const byFecha = b.fechaKey.localeCompare(a.fechaKey);
+    if (byFecha !== 0) return byFecha;
+    const byArea = a.area.localeCompare(b.area, 'es');
+    if (byArea !== 0) return byArea;
+    return a.nombre.localeCompare(b.nombre, 'es');
+  });
+}
+
+function labelModalidadTitulo(modalidad: ModalidadItinerario): string {
+  if (modalidad === 'ADAPTACION') return 'Adaptación';
+  if (modalidad === 'ESPECIAL') return 'Especial';
+  return 'Normal';
+}
+
+function responsablesDe(g: RespaldoGrilla): string {
+  return g.conCeladora
+    ? `${g.chofer} + ${g.celadora ?? '—'}`
+    : `${g.chofer} (sin celadora)`;
+}
+
+type AsistMap = Map<
+  string,
+  { estado: string; observacion: string | null }
+>;
+
+function buildAsistMap(g: RespaldoGrilla | null): AsistMap {
+  const map: AsistMap = new Map();
+  if (!g) return map;
+  for (const a of g.asistencias) {
+    map.set(nombreKey(a.pasajeroNombre), {
+      estado: normalizeEstadoAsistenciaFicha(a.estado),
+      observacion: a.motivoCancelacion,
+    });
+  }
+  return map;
+}
+
+/** Pasajeros únicos asignados en la grilla (filas con pasajero), ordenados por nombre. */
+function pasajerosDeGrilla(g: RespaldoGrilla): string[] {
+  const seen = new Set<string>();
+  const nombres: string[] = [];
+  for (const f of g.filas) {
+    if (!f.pasajeroId) continue;
+    const key = f.pasajeroId;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const nombre = f.pasajeroNombre.trim();
+    if (!nombre) continue;
+    nombres.push(nombre);
+  }
+  return nombres.sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+/** Asistencia + observación del sentido de este recorrido. */
+function celdaAsistenciaDe(
+  pasajeroNombre: string,
+  map: AsistMap,
+): { estado: string; observacion: string } {
+  const row = map.get(nombreKey(pasajeroNombre));
+  if (!row) return { estado: '—', observacion: '' };
+  return {
+    estado: labelEstadoAsistenciaFicha(row.estado),
+    observacion: row.observacion?.trim() ?? '',
+  };
+}
+
+/** Bloque de un recorrido: 3 franjas + tabla Pasajero | Asistencias | Observaciones. */
+function renderRecorridoBlock(
+  jornada: Pick<RespaldoJornada, 'fecha' | 'area' | 'nombre'>,
+  g: RespaldoGrilla,
+): string {
+  const asistMap = buildAsistMap(g);
+  const pasajeros = pasajerosDeGrilla(g);
+  const filas = pasajeros
+    .map((nombre) => {
+      const { estado, observacion } = celdaAsistenciaDe(nombre, asistMap);
+      return `<tr>
+        <td>${escapeHtml(nombre)}</td>
+        <td>${escapeHtml(estado)}</td>
+        <td>${escapeHtml(observacion || '—')}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `
+    <section class="recorrido">
+      <div class="bar bar--titulo">
+        <span>${escapeHtml(formatFechaGrilla(jornada.fecha))}</span>
+        <span>·</span>
+        <span>${escapeHtml(labelTipoItinerario(g.tipoItinerario))}</span>
+        <span>·</span>
+        <span>${escapeHtml(g.transporte)}</span>
+      </div>
+      <div class="bar bar--meta">
+        <span><strong>Área:</strong> ${escapeHtml(jornada.area)}</span>
+        <span><strong>Nombre:</strong> ${escapeHtml(jornada.nombre)}</span>
+        <span><strong>Responsables:</strong> ${escapeHtml(responsablesDe(g))}</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Pasajero</th>
+            <th>Asistencias</th>
+            <th>Observaciones</th>
+          </tr>
+        </thead>
+        <tbody>${filas || '<tr><td colspan="3">Sin pasajeros en este recorrido.</td></tr>'}</tbody>
+      </table>
+    </section>`;
+}
+
 export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
   const header = [
     'Fecha',
+    'Nombre',
     'Itinerario',
     'Area',
     'Transporte',
@@ -72,6 +256,7 @@ export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
     lines.push(
       [
         formatFechaGrilla(g.fecha),
+        g.nombre,
         labelTipoItinerario(g.tipoItinerario),
         g.area,
         g.transporte,
@@ -96,37 +281,56 @@ export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
 }
 
 export function buildAsistenciasCsv(grillas: RespaldoGrilla[]): string {
+  const jornadas = agruparRespaldoJornadas(grillas);
   const header = [
     'Fecha',
-    'Itinerario',
+    'Nombre',
+    'Modalidad',
     'Area',
-    'Transporte',
     'Pasajero',
-    'Estado',
-    'Motivo',
-    'Chofer',
-    'Celadora',
+    'Ingreso',
+    'Obs ingreso',
+    'Salida',
+    'Obs salida',
+    'Vehiculo ingreso',
+    'Vehiculo salida',
   ];
   const lines = [header.map(csvEscape).join(',')];
-  for (const g of grillas) {
-    for (const a of g.asistencias) {
+
+  for (const j of jornadas) {
+    const ingMap = buildAsistMap(j.ingreso);
+    const salMap = buildAsistMap(j.salida);
+    const names = new Set<string>([...ingMap.keys(), ...salMap.keys()]);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b, 'es'));
+
+    for (const key of sorted) {
+      const ing = ingMap.get(key);
+      const sal = salMap.get(key);
+      const displayName =
+        j.ingreso?.asistencias.find((a) => nombreKey(a.pasajeroNombre) === key)?.pasajeroNombre ??
+        j.salida?.asistencias.find((a) => nombreKey(a.pasajeroNombre) === key)?.pasajeroNombre ??
+        key;
+
       lines.push(
         [
-          formatFechaGrilla(g.fecha),
-          labelTipoItinerario(g.tipoItinerario),
-          g.area,
-          g.transporte,
-          a.pasajeroNombre,
-          a.estado,
-          a.motivoCancelacion ?? '',
-          g.chofer,
-          g.conCeladora ? (g.celadora ?? '') : 'Sin celadora',
+          formatFechaGrilla(j.fecha),
+          j.nombre,
+          labelModalidadTitulo(j.modalidad),
+          j.area,
+          displayName,
+          ing ? labelEstadoAsistenciaFicha(ing.estado) : '',
+          ing?.observacion ?? '',
+          sal ? labelEstadoAsistenciaFicha(sal.estado) : '',
+          sal?.observacion ?? '',
+          j.ingreso?.transporte ?? '',
+          j.salida?.transporte ?? '',
         ]
           .map(csvEscape)
           .join(','),
       );
     }
   }
+
   return `\uFEFF${lines.join('\n')}`;
 }
 
@@ -137,64 +341,16 @@ export function buildRespaldoPrintHtml(params: {
   filtrosResumen: string;
   grillas: RespaldoGrilla[];
 }): string {
-  const bloques = params.grillas
-    .map((g) => {
-      const responsables = g.conCeladora
-        ? `${g.chofer} + ${g.celadora ?? '—'}`
-        : `${g.chofer} (sin celadora)`;
-      const filas = g.filas
-        .map(
-          (f) =>
-            `<tr><td>${escapeHtml(f.hora ?? '—')}</td><td>${escapeHtml(f.direccion)}</td><td>${escapeHtml(
-              formatAccionFila({
-                accion: f.accion,
-                pasajeroNombre: f.pasajeroNombre,
-                trasbordoHacia: f.trasbordoHacia,
-              }),
-            )}</td></tr>`,
-        )
-        .join('');
-      const asistencias = g.asistencias
-        .map(
-          (a) =>
-            `<tr><td>${escapeHtml(a.pasajeroNombre)}</td><td>${escapeHtml(a.estado)}</td><td>${escapeHtml(
-              a.motivoCancelacion ?? '',
-            )}</td></tr>`,
-        )
-        .join('');
+  const jornadas = agruparRespaldoJornadas(params.grillas);
 
-      return `
-        <section class="grilla">
-          <h2>${escapeHtml(formatFechaGrilla(g.fecha))} · ${
-            labelTipoItinerario(g.tipoItinerario)
-          } · ${escapeHtml(g.transporte)}</h2>
-          <div class="meta">
-            <div><strong>Área:</strong> ${escapeHtml(g.area)}</div>
-            <div><strong>Tipo:</strong> ${escapeHtml(g.tipoTransporte)}</div>
-            <div><strong>Responsables:</strong> ${escapeHtml(responsables)}</div>
-            <div><strong>Tiempos:</strong> chofer ${g.choferMinutos ?? '—'} min · celadora ${
-              g.celadoraMinutos ?? '—'
-            } min</div>
-            <div><strong>Asistencias:</strong> ${g.asistio} · Canceló ${g.cancelo} · No se presentó ${
-              g.noSePresento
-            }</div>
-            ${g.combustibleNivel ? `<div><strong>Combustible:</strong> ${escapeHtml(g.combustibleNivel)}</div>` : ''}
-            ${g.nota ? `<div><strong>Nota:</strong> ${escapeHtml(g.nota)}</div>` : ''}
-            ${g.informeCeladora ? `<div><strong>Informe celadora:</strong> ${escapeHtml(g.informeCeladora)}</div>` : ''}
-            ${g.informeChofer ? `<div><strong>Informe chofer:</strong> ${escapeHtml(g.informeChofer)}</div>` : ''}
-          </div>
-          <h3>Itinerario</h3>
-          <table>
-            <thead><tr><th>Hora</th><th>Parada / dirección</th><th>Acción</th></tr></thead>
-            <tbody>${filas || '<tr><td colspan="3">Sin filas</td></tr>'}</tbody>
-          </table>
-          <h3>Asistencias</h3>
-          <table>
-            <thead><tr><th>Pasajero</th><th>Estado</th><th>Motivo</th></tr></thead>
-            <tbody>${asistencias || '<tr><td colspan="3">Sin registros</td></tr>'}</tbody>
-          </table>
-        </section>`;
+  const bloques = jornadas
+    .map((j) => {
+      const recorridos: string[] = [];
+      if (j.ingreso) recorridos.push(renderRecorridoBlock(j, j.ingreso));
+      if (j.salida) recorridos.push(renderRecorridoBlock(j, j.salida));
+      return recorridos.join('');
     })
+    .filter(Boolean)
     .join('');
 
   return `<!doctype html>
@@ -203,16 +359,30 @@ export function buildRespaldoPrintHtml(params: {
   <meta charset="utf-8" />
   <title>${escapeHtml(params.titulo)}</title>
   <style>
-    body{font-family:Arial,sans-serif;padding:24px;color:#111;line-height:1.4}
+    body{font-family:Arial,sans-serif;padding:24px;color:#111;line-height:1.35}
     h1{font-size:20px;margin:0 0 8px}
-    h2{font-size:16px;margin:0 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
-    h3{font-size:14px;margin:14px 0 6px}
-    .resumen{margin-bottom:20px;font-size:13px;color:#333}
-    .grilla{margin-bottom:28px;page-break-inside:avoid}
-    .meta{font-size:12px;margin-bottom:10px}
-    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
-    th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top}
-    th{background:#111;color:#fff}
+    .resumen{margin-bottom:18px;font-size:13px;color:#333}
+    .recorrido{margin-bottom:18px;page-break-inside:avoid}
+    .bar{
+      display:flex;flex-wrap:wrap;align-items:center;gap:0.35rem 0.55rem;
+      background:#e8e8e8;color:#111;font-size:11px;
+      padding:6px 8px;margin:0;
+      border:1.5px solid #111;
+      border-bottom:none;
+    }
+    .bar--titulo{font-weight:700;font-size:12px}
+    .bar--meta{gap:0.35rem 1.1rem;border-top:none}
+    .bar--meta strong{font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin:0}
+    th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}
+    th{
+      background:#e8e8e8;color:#111;
+      border:1.5px solid #111;
+      border-top:none;
+    }
+    table thead tr th:first-child{border-left:1.5px solid #111}
+    table thead tr th:last-child{border-right:1.5px solid #111}
+    table tbody tr:first-child td{border-top:1.5px solid #111}
     @media print{
       body{padding:0}
       .no-print{display:none}
@@ -224,7 +394,7 @@ export function buildRespaldoPrintHtml(params: {
   <div class="resumen">
     <div><strong>Período:</strong> ${escapeHtml(params.desde)} → ${escapeHtml(params.hasta)}</div>
     <div><strong>Filtros:</strong> ${escapeHtml(params.filtrosResumen)}</div>
-    <div><strong>Grillas:</strong> ${params.grillas.length}</div>
+    <div><strong>Jornadas:</strong> ${jornadas.length} · <strong>Grillas:</strong> ${params.grillas.length}</div>
     <p class="no-print">Usá Imprimir del navegador y elegí “Guardar como PDF” si querés archivo.</p>
   </div>
   ${bloques || '<p>No hay grillas para exportar con estos filtros.</p>'}
