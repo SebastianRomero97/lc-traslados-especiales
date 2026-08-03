@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import { GrillaEstadoChip } from '@/components/panel/GrillaEstadoChip';
+import { GrillaResumenPanel } from '@/components/panel/GrillaResumenPanel';
 import {
   GrillaTablero,
   type GrillaTableroInitial,
@@ -23,6 +24,7 @@ export function AdminGrillasRevision() {
   const [loading, setLoading] = useState(true);
   const [notaDraft, setNotaDraft] = useState<Record<string, string>>({});
   const [cierreNotaDraft, setCierreNotaDraft] = useState<Record<string, string>>({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<GrillaItem | null>(null);
   const [options, setOptions] = useState<GrillaTableroOptions | null>(null);
   const [boardKey, setBoardKey] = useState(0);
@@ -171,8 +173,8 @@ export function AdminGrillasRevision() {
       <section className="panel-card">
         <h2>Revisión de grillas</h2>
         <p className="panel-card__desc">
-          Grillas enviadas por Administración. Podés aprobarlas, observarlas con una nota, o
-          corregirlas vos y aprobarlas.
+          Grillas enviadas por Administración. Revisá el contenido con Ver, y después aprobá,
+          devolvé con observación, o corregí vos y aprobá.
         </p>
 
         {loading ? (
@@ -181,76 +183,94 @@ export function AdminGrillasRevision() {
           <p className="panel-card__desc">No hay grillas pendientes de revisión.</p>
         ) : (
           <ul className="transporte-fichas">
-            {revisionItems.map((item) => (
-              <li key={item.id} className="transporte-ficha">
-                <div className="transporte-ficha__head">
-                  <div>
-                    <strong>
-                      {item.nombre || 'Sin nombre'}{' '}
-                      <span>
-                        · {formatFechaGrilla(item.fecha)} ·{' '}
-                        {labelTipoItinerario(item.tipoItinerario)}
-                      </span>
-                    </strong>
-                    <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
-                      {item.area.nombre} · {item.transporte.nombre} ·{' '}
-                      {item.conCeladora
-                        ? `${item.chofer.username} + ${item.celadora?.username ?? '—'}`
-                        : `${item.chofer.username} (sin celadora)`}
-                    </p>
-                    <div style={{ marginTop: '0.35rem' }}>
-                      <GrillaEstadoChip estado={item.estado} />
-                    </div>
-                    {item.notaRevision ? (
-                      <p className="panel-card__desc" style={{ marginTop: '0.45rem' }}>
-                        Nota de revisión: {item.notaRevision}
+            {revisionItems.map((item) => {
+              const abierta = expandedId === item.id;
+              return (
+                <li key={item.id} className="transporte-ficha">
+                  <div className="transporte-ficha__head">
+                    <div>
+                      <strong>
+                        {item.nombre || 'Sin nombre'}{' '}
+                        <span>
+                          · {formatFechaGrilla(item.fecha)} ·{' '}
+                          {labelTipoItinerario(item.tipoItinerario)}
+                        </span>
+                      </strong>
+                      <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
+                        {item.area.nombre} · {item.transporte.nombre} ·{' '}
+                        {item.conCeladora
+                          ? `${item.chofer.username} + ${item.celadora?.username ?? '—'}`
+                          : `${item.chofer.username} (sin celadora)`}
                       </p>
-                    ) : null}
+                      <div style={{ marginTop: '0.35rem' }}>
+                        <GrillaEstadoChip estado={item.estado} />
+                      </div>
+                      {item.notaRevision ? (
+                        <p className="panel-card__desc" style={{ marginTop: '0.45rem' }}>
+                          Nota de revisión: {item.notaRevision}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="admin-actions">
+                      <button
+                        type="button"
+                        className="btn btn--outline btn--sm"
+                        onClick={() => setExpandedId(abierta ? null : item.id)}
+                        aria-expanded={abierta}
+                      >
+                        {abierta ? 'Ocultar' : 'Ver'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        onClick={() => void postEstado(item.id, 'aprobar')}
+                      >
+                        Aprobar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--outline btn--sm"
+                        onClick={() => void openEditar(item)}
+                      >
+                        Editar y aprobar
+                      </button>
+                    </div>
                   </div>
-                  <div className="admin-actions">
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--sm"
-                      onClick={() => void postEstado(item.id, 'aprobar')}
-                    >
-                      Aprobar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--outline btn--sm"
-                      onClick={() => void openEditar(item)}
-                    >
-                      Editar y aprobar
-                    </button>
+
+                  {abierta ? (
+                    <div className="transporte-ficha__body">
+                      <GrillaResumenPanel grilla={item} />
+                    </div>
+                  ) : null}
+
+                  <div className="transporte-ficha__body">
+                    <div className="transporte-ficha__detalle-form">
+                      <textarea
+                        rows={2}
+                        placeholder="Nota de corrección para Administración (obligatoria al devolver)"
+                        value={notaDraft[item.id] ?? item.notaRevision ?? ''}
+                        onChange={(e) =>
+                          setNotaDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--outline btn--sm"
+                        onClick={() =>
+                          void postEstado(
+                            item.id,
+                            'observar',
+                            notaDraft[item.id] ?? item.notaRevision ?? '',
+                          )
+                        }
+                      >
+                        Devolver / Observar
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="transporte-ficha__body">
-                  <div className="transporte-ficha__detalle-form">
-                    <textarea
-                      rows={2}
-                      placeholder="Nota de corrección para Administración"
-                      value={notaDraft[item.id] ?? item.notaRevision ?? ''}
-                      onChange={(e) =>
-                        setNotaDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="btn btn--outline btn--sm"
-                      onClick={() =>
-                        void postEstado(
-                          item.id,
-                          'observar',
-                          notaDraft[item.id] ?? item.notaRevision ?? '',
-                        )
-                      }
-                    >
-                      Enviar a corrección
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -268,66 +288,84 @@ export function AdminGrillasRevision() {
           <p className="panel-card__desc">No hay grillas iniciadas en este momento.</p>
         ) : (
           <ul className="transporte-fichas">
-            {enCursoItems.map((item) => (
-              <li key={item.id} className="transporte-ficha">
-                <div className="transporte-ficha__head">
-                  <div>
-                    <strong>
-                      {item.nombre || 'Sin nombre'}{' '}
-                      <span>
-                        · {formatFechaGrilla(item.fecha)} ·{' '}
-                        {labelTipoItinerario(item.tipoItinerario)}
-                      </span>
-                    </strong>
-                    <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
-                      {item.area.nombre} · {item.transporte.nombre} ·{' '}
-                      {item.conCeladora
-                        ? `${item.chofer.username} + ${item.celadora?.username ?? '—'}`
-                        : `${item.chofer.username} (sin celadora)`}
-                    </p>
-                    <div style={{ marginTop: '0.35rem' }}>
-                      <GrillaEstadoChip estado={item.estado} />
+            {enCursoItems.map((item) => {
+              const abierta = expandedId === item.id;
+              return (
+                <li key={item.id} className="transporte-ficha">
+                  <div className="transporte-ficha__head">
+                    <div>
+                      <strong>
+                        {item.nombre || 'Sin nombre'}{' '}
+                        <span>
+                          · {formatFechaGrilla(item.fecha)} ·{' '}
+                          {labelTipoItinerario(item.tipoItinerario)}
+                        </span>
+                      </strong>
+                      <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
+                        {item.area.nombre} · {item.transporte.nombre} ·{' '}
+                        {item.conCeladora
+                          ? `${item.chofer.username} + ${item.celadora?.username ?? '—'}`
+                          : `${item.chofer.username} (sin celadora)`}
+                      </p>
+                      <div style={{ marginTop: '0.35rem' }}>
+                        <GrillaEstadoChip estado={item.estado} />
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div className="transporte-ficha__body">
-                  <div className="transporte-ficha__detalle-form">
-                    <textarea
-                      rows={3}
-                      placeholder="Observación obligatoria (falla, siniestro, motivo del cierre…)"
-                      value={cierreNotaDraft[item.id] ?? ''}
-                      onChange={(e) =>
-                        setCierreNotaDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
-                      }
-                    />
                     <div className="admin-actions">
                       <button
                         type="button"
-                        className="btn btn--primary btn--sm"
-                        onClick={() =>
-                          void postCierre(
-                            item.id,
-                            'forzar_finalizar',
-                            cierreNotaDraft[item.id] ?? '',
-                          )
-                        }
+                        className="btn btn--outline btn--sm"
+                        onClick={() => setExpandedId(abierta ? null : item.id)}
+                        aria-expanded={abierta}
                       >
-                        Finalizar recorrido forzado
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--danger btn--sm"
-                        onClick={() =>
-                          void postCierre(item.id, 'interrumpir', cierreNotaDraft[item.id] ?? '')
-                        }
-                      >
-                        Recorrido interrumpido
+                        {abierta ? 'Ocultar' : 'Ver'}
                       </button>
                     </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                  {abierta ? (
+                    <div className="transporte-ficha__body">
+                      <GrillaResumenPanel grilla={item} />
+                    </div>
+                  ) : null}
+                  <div className="transporte-ficha__body">
+                    <div className="transporte-ficha__detalle-form">
+                      <textarea
+                        rows={3}
+                        placeholder="Observación obligatoria (falla, siniestro, motivo del cierre…)"
+                        value={cierreNotaDraft[item.id] ?? ''}
+                        onChange={(e) =>
+                          setCierreNotaDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                      />
+                      <div className="admin-actions">
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--sm"
+                          onClick={() =>
+                            void postCierre(
+                              item.id,
+                              'forzar_finalizar',
+                              cierreNotaDraft[item.id] ?? '',
+                            )
+                          }
+                        >
+                          Finalizar recorrido forzado
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--danger btn--sm"
+                          onClick={() =>
+                            void postCierre(item.id, 'interrumpir', cierreNotaDraft[item.id] ?? '')
+                          }
+                        >
+                          Recorrido interrumpido
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

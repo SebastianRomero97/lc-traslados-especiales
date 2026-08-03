@@ -596,23 +596,26 @@ export function AdministracionGrillasManager({
 
   if (!esHistorial && boardMode !== 'cerrado' && options) {
     return (
-      <GrillaTablero
-        key={boardKey}
-        areaId={areaId}
-        options={options}
-        defaultFecha={createFecha}
-        defaultTipoItinerario={tipoDefaultDeGrupo(tipoGrupo)}
-        initial={
-          boardMode === 'editar' && boardInitial?.id
-            ? boardInitial
-            : boardMode === 'nueva' && boardInitial
-              ? { ...boardInitial, id: '' }
-              : null
-        }
-        onSaved={() => void afterSaved()}
-        onDeleted={() => void afterDeleted()}
-        onCancel={closeBoard}
-      />
+      <div className="adm-grillas">
+        {popup.popupNode}
+        <GrillaTablero
+          key={boardKey}
+          areaId={areaId}
+          options={options}
+          defaultFecha={createFecha}
+          defaultTipoItinerario={tipoDefaultDeGrupo(tipoGrupo)}
+          initial={
+            boardMode === 'editar' && boardInitial?.id
+              ? boardInitial
+              : boardMode === 'nueva' && boardInitial
+                ? { ...boardInitial, id: '' }
+                : null
+          }
+          onSaved={() => void afterSaved()}
+          onDeleted={() => void afterDeleted()}
+          onCancel={closeBoard}
+        />
+      </div>
     );
   }
 
@@ -620,6 +623,7 @@ export function AdministracionGrillasManager({
   if (esHistorial) {
     return (
       <div className="adm-grillas">
+        {popup.popupNode}
         <section className="panel-card">
           <div className="grilla-list-head">
             <div>
@@ -675,6 +679,7 @@ export function AdministracionGrillasManager({
 
   return (
     <div className="adm-grillas">
+      {popup.popupNode}
       <div className="admin-tabs-shell">
         <div className="admin-tabs" role="tablist" aria-label="Áreas">
           {areas.map((a) => (
