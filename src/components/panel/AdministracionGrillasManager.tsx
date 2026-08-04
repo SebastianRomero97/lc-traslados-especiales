@@ -54,8 +54,14 @@ const GRILLA_BASE_STORAGE_KEY = 'lc-administracion-grilla-base';
 
 export function AdministracionGrillasManager({
   modo = 'principal',
+  canDelete = false,
+  puedeAprobar = false,
 }: {
   modo?: 'principal' | 'historial';
+  /** Solo Admin elimina grillas. */
+  canDelete?: boolean;
+  /** Admin o Administración con flag puedeAprobar. */
+  puedeAprobar?: boolean;
 }) {
   const popup = usePanelPopup();
   const esHistorial = modo === 'historial';
@@ -70,6 +76,7 @@ export function AdministracionGrillasManager({
   const [boardKey, setBoardKey] = useState(0);
   const [createFecha, setCreateFecha] = useState(todayFechaInput());
 
+  const [observarDraft, setObservarDraft] = useState<Record<string, string>>({});
   const [periodo, setPeriodo] = useState<PeriodoVista>('hoy');
   const [tipoGrupo, setTipoGrupo] = useState<TipoGrupoItinerario>('ingreso');
   const [weekMonday, setWeekMonday] = useState(() => mondayOfWeek(todayFechaInput()));
@@ -273,6 +280,8 @@ export function AdministracionGrillasManager({
       fecha: hoy,
       nota: grilla.nota,
       conCeladora: grilla.conCeladora,
+      salidaDeBase: Boolean(grilla.salidaDeBase),
+      retornoABase: Boolean(grilla.retornoABase),
       transporte: grilla.transporte,
       chofer: grilla.chofer,
       celadora: grilla.celadora,
@@ -298,6 +307,8 @@ export function AdministracionGrillasManager({
         fecha: hoy,
         nota: grilla.nota,
         conCeladora: grilla.conCeladora,
+        salidaDeBase: Boolean(grilla.salidaDeBase),
+        retornoABase: Boolean(grilla.retornoABase),
         transporte: grilla.transporte,
         chofer: grilla.chofer,
         celadora: grilla.celadora,
@@ -312,6 +323,21 @@ export function AdministracionGrillasManager({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar / modo
   }, [esHistorial]);
+
+  const postEstado = async (id: string, action: string, notaRevision?: string) => {
+    const response = await fetch(`/api/administracion/grillas/${id}/estado`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, notaRevision }),
+    });
+    if (!response.ok) {
+      popup.error(await readApiError(response, 'No se pudo actualizar el estado.'));
+      return;
+    }
+    const body = (await response.json()) as { message?: string };
+    popup.success(body.message ?? 'Estado actualizado.');
+    await loadGrillas(areaId);
+  };
 
   const handleDelete = async (id: string, nombre?: string) => {
     const ok = await popup.confirm({
@@ -456,6 +482,37 @@ export function AdministracionGrillasManager({
             Enviar a revisión
           </button>
         )}
+        {puedeAprobar && (estado === 'EN_REVISION' || estado === 'OBSERVADA') && (
+          <>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              onClick={() => void postEstado(g.id, 'aprobar')}
+            >
+              Aprobar
+            </button>
+            <div className="adm-grillas__observar">
+              <input
+                type="text"
+                placeholder="Nota para observar…"
+                value={observarDraft[g.id] ?? ''}
+                onChange={(e) =>
+                  setObservarDraft((prev) => ({ ...prev, [g.id]: e.target.value }))
+                }
+                aria-label="Nota de observación"
+              />
+              <button
+                type="button"
+                className="btn btn--outline btn--sm"
+                onClick={() =>
+                  void postEstado(g.id, 'observar', observarDraft[g.id] ?? g.notaRevision ?? '')
+                }
+              >
+                Observar
+              </button>
+            </div>
+          </>
+        )}
         <button type="button" className="btn btn--outline btn--sm" onClick={() => applyGrillaBase(g)}>
           Usar como base
         </button>
@@ -473,7 +530,7 @@ export function AdministracionGrillasManager({
         >
           Imprimir
         </button>
-        {!bloqueada && (
+        {canDelete && !bloqueada && (
           <button
             type="button"
             className="btn btn--danger btn--sm"
@@ -612,7 +669,8 @@ export function AdministracionGrillasManager({
                 : null
           }
           onSaved={() => void afterSaved()}
-          onDeleted={() => void afterDeleted()}
+          onDeleted={canDelete ? () => void afterDeleted() : undefined}
+          allowDelete={canDelete}
           onCancel={closeBoard}
         />
       </div>

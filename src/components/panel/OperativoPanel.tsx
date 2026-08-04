@@ -39,6 +39,8 @@ type GrillaOperativa = {
   estado?: string;
   cierreTipo?: string | null;
   conCeladora: boolean;
+  salidaDeBase?: boolean;
+  retornoABase?: boolean;
   choferInicioAt: string | null;
   choferFinAt: string | null;
   celadoraInicioAt: string | null;
@@ -78,7 +80,9 @@ type GrillaOperativa = {
 };
 
 function isJornadaCerradaGrilla(g: GrillaOperativa, rol: 'CELADORA' | 'CHOFER'): boolean {
-  if (g.estado === 'FINALIZADA' || g.cierreTipo) return true;
+  // Cierre Admin fuerza ambos lados.
+  if (g.cierreTipo === 'FORZADO_ADMIN' || g.cierreTipo === 'INTERRUMPIDO') return true;
+  // Cada rol cierra su propia parte. FINALIZADA del chofer no cierra a la celadora.
   if (rol === 'CELADORA') return Boolean(g.informeCeladora?.trim());
   return Boolean(g.informeChofer?.trim() || g.combustibleNivel);
 }
@@ -436,7 +440,15 @@ export function OperativoPanel({
                       ? selected.puntoEncuentro.nombre
                         ? `${selected.puntoEncuentro.nombre} — ${selected.puntoEncuentro.direccion}`
                         : selected.puntoEncuentro.direccion
-                      : 'Parte de base (sin punto aparte)'}
+                      : 'Sin punto de encuentro'}
+                  </p>
+                )}
+                {(selected.salidaDeBase || selected.retornoABase) && (
+                  <p className="panel-card__desc" style={{ marginTop: '-0.35rem' }}>
+                    Base LC:
+                    {selected.salidaDeBase ? ' Salida de base' : ''}
+                    {selected.salidaDeBase && selected.retornoABase ? ' ·' : ''}
+                    {selected.retornoABase ? ' Retorno a base' : ''}
                   </p>
                 )}
                 {selected.nota && <p className="grilla-preview__nota">{selected.nota}</p>}
@@ -444,7 +456,7 @@ export function OperativoPanel({
                 <div className="operativo-reloj">
                   <div>
                     <strong>
-                      {rol === 'CELADORA' ? 'Recorrido (pasajeros)' : 'Manejo (vehículo)'}
+                      {rol === 'CELADORA' ? 'Asistencia (pasajeros)' : 'Recorrido (viaje)'}
                     </strong>
                     <p className="panel-card__desc" style={{ marginBottom: 0 }}>
                       {inicioAt
@@ -455,6 +467,16 @@ export function OperativoPanel({
                         ? ` · Duración: ${formatDuration(inicioAt, finAt)}`
                         : ''}
                     </p>
+                    {rol === 'CHOFER' && (
+                      <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
+                        El chofer inicia y finaliza el recorrido (estado En curso / Finalizada).
+                      </p>
+                    )}
+                    {rol === 'CELADORA' && (
+                      <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
+                        La asistencia es independiente del estado del viaje del chofer.
+                      </p>
+                    )}
                   </div>
                   <div className="admin-actions">
                     {!inicioAt && !jornadaCerrada && (
@@ -464,21 +486,13 @@ export function OperativoPanel({
                         disabled={busy}
                         onClick={() => void iniciarFin('iniciar')}
                       >
-                        {rol === 'CELADORA' ? 'Iniciar recorrido' : 'Iniciar manejo'}
-                      </button>
-                    )}
-                    {inicioAt && !finAt && !jornadaCerrada && (
-                      <button
-                        type="button"
-                        className="btn btn--danger"
-                        disabled={busy}
-                        onClick={() => void iniciarFin('finalizar')}
-                      >
-                        {rol === 'CELADORA' ? 'Finalizar recorrido' : 'Finalizar manejo'}
+                        {rol === 'CELADORA' ? 'Tomar asistencia' : 'Iniciar recorrido'}
                       </button>
                     )}
                     {jornadaCerrada ? (
-                      <span className="role-badge role-badge--celadora">Jornada cerrada</span>
+                      <span className="role-badge role-badge--celadora">
+                        {rol === 'CELADORA' ? 'Asistencia cerrada' : 'Jornada cerrada'}
+                      </span>
                     ) : inicioAt && finAt ? (
                       <span className="role-badge role-badge--chofer">Pendiente informe</span>
                     ) : null}
@@ -507,7 +521,7 @@ export function OperativoPanel({
                   ) : (
                     <>
                       <p className="panel-card__desc">
-                        Al guardar el informe se cierra la jornada (punto de no retorno). Visible
+                        Al guardar el informe se cierra tu asistencia (punto de no retorno). Visible
                         para Admin y Administración.
                       </p>
                       <textarea
@@ -553,8 +567,14 @@ export function OperativoPanel({
                             : actual?.estado === 'CANCELO' ||
                               motivos[keyNombre] !== undefined;
 
+                        const destinoUsado =
+                          esDestino && actual?.estado === 'ASISTIO';
+
                         return (
-                          <li key={f.id} className="operativo-ruta-item">
+                          <li
+                            key={f.id}
+                            className={`operativo-ruta-item${destinoUsado ? ' operativo-fila--destino-usado' : ''}`}
+                          >
                             <div className="operativo-ruta-item__meta">
                               <span className="operativo-ruta-item__hora">
                                 {f.hora?.trim() || '—'}
@@ -714,6 +734,19 @@ export function OperativoPanel({
                       })}
                     </ul>
                   )}
+
+                  {inicioAt && !finAt && !jornadaCerrada && (
+                    <div className="operativo-finalizar-bar">
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        disabled={busy}
+                        onClick={() => void iniciarFin('finalizar')}
+                      >
+                        Finalizar asistencia
+                      </button>
+                    </div>
+                  )}
                 </section>
               ) : (
                 <>
@@ -730,58 +763,81 @@ export function OperativoPanel({
                           </tr>
                         </thead>
                         <tbody>
-                          {selected.filas.map((f) => (
-                            <tr key={f.id}>
-                              <td>{f.hora ?? '—'}</td>
-                              <td>{f.direccion}</td>
-                              <td>
-                                {formatAccionFila({
-                                  accion: f.accion,
-                                  pasajeroNombre: f.pasajeroNombre,
-                                  trasbordoHacia: f.trasbordoHacia,
-                                })}
-                              </td>
-                              <td className="admin-actions">
-                                {f.direccion.trim() ? (
-                                  <>
-                                    {(() => {
-                                      const urls = navUrlsParaChofer({
-                                        direccion: f.direccion,
-                                        lat: f.lat,
-                                        lon: f.lon,
-                                        usarCoordsParaChofer: f.usarCoordsParaChofer,
-                                      });
-                                      return (
-                                        <>
-                                          <a
-                                            className="btn btn--outline btn--sm"
-                                            href={urls.maps}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                          >
-                                            Maps
-                                          </a>
-                                          <a
-                                            className="btn btn--outline btn--sm"
-                                            href={urls.waze}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                          >
-                                            Waze
-                                          </a>
-                                        </>
-                                      );
-                                    })()}
-                                  </>
-                                ) : (
-                                  '—'
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                          {selected.filas.map((f) => {
+                            const esDestino = Boolean(f.destinoId) && !f.pasajeroId;
+                            const keyNombre = f.pasajeroNombre.trim();
+                            const actual = asistenciaMap.get(keyNombre.toLowerCase());
+                            const destinoUsado =
+                              esDestino && actual?.estado === 'ASISTIO';
+                            return (
+                              <tr
+                                key={f.id}
+                                className={destinoUsado ? 'operativo-fila--destino-usado' : undefined}
+                              >
+                                <td>{f.hora ?? '—'}</td>
+                                <td>{f.direccion}</td>
+                                <td>
+                                  {formatAccionFila({
+                                    accion: f.accion,
+                                    pasajeroNombre: f.pasajeroNombre,
+                                    trasbordoHacia: f.trasbordoHacia,
+                                  })}
+                                </td>
+                                <td>
+                                  {f.direccion.trim() ? (
+                                    <div className="operativo-nav-btns">
+                                      {(() => {
+                                        const urls = navUrlsParaChofer({
+                                          direccion: f.direccion,
+                                          lat: f.lat,
+                                          lon: f.lon,
+                                          usarCoordsParaChofer: f.usarCoordsParaChofer,
+                                        });
+                                        return (
+                                          <>
+                                            <a
+                                              className="btn btn--outline operativo-nav-btn"
+                                              href={urls.maps}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                            >
+                                              Google Maps
+                                            </a>
+                                            <a
+                                              className="btn btn--outline operativo-nav-btn"
+                                              href={urls.waze}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                            >
+                                              Waze
+                                            </a>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
+
+                    {inicioAt && !finAt && !jornadaCerrada && (
+                      <div className="operativo-finalizar-bar">
+                        <button
+                          type="button"
+                          className="btn btn--danger"
+                          disabled={busy}
+                          onClick={() => void iniciarFin('finalizar')}
+                        >
+                          Finalizar recorrido
+                        </button>
+                      </div>
+                    )}
                   </section>
 
                   {puedeAsistencia && (

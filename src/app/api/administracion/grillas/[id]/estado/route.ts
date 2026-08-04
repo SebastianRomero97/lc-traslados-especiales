@@ -9,7 +9,7 @@ import {
   puedeVolverABorrador,
   type EstadoGrilla,
 } from '@/lib/grilla-estado';
-import { hasRole } from '@/lib/roles';
+import { canApproveGrillas, hasRole } from '@/lib/roles';
 import { grillaInclude } from '@/lib/operativo-grilla';
 
 type Params = { params: Promise<{ id: string }> };
@@ -23,6 +23,7 @@ export async function POST(request: Request, { params }: Params) {
   if ('error' in auth) return auth.error;
 
   const { id } = await params;
+  const puedeAprobar = canApproveGrillas(auth.user);
   const esAdmin = hasRole(auth.user, 'ADMIN');
 
   try {
@@ -87,8 +88,11 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     if (action === 'observar') {
-      if (!esAdmin) {
-        return NextResponse.json({ message: 'Solo Admin puede observar grillas.' }, { status: 403 });
+      if (!puedeAprobar) {
+        return NextResponse.json(
+          { message: 'No tenés permiso para observar grillas.' },
+          { status: 403 },
+        );
       }
       if (estado !== 'EN_REVISION' && estado !== 'OBSERVADA') {
         return NextResponse.json(
@@ -115,8 +119,11 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     if (action === 'aprobar') {
-      if (!esAdmin) {
-        return NextResponse.json({ message: 'Solo Admin puede aprobar grillas.' }, { status: 403 });
+      if (!puedeAprobar) {
+        return NextResponse.json(
+          { message: 'No tenés permiso para aprobar grillas.' },
+          { status: 403 },
+        );
       }
       if (
         estado !== 'EN_REVISION' &&

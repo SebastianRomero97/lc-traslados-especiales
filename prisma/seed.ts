@@ -17,10 +17,15 @@ const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 /** Passwords débiles solo para bootstrap local. En prod: no correr seed; Admin cambia claves. */
-const seedUsers: { username: string; password: string; roles: Role[] }[] = [
+const seedUsers: {
+  username: string;
+  password: string;
+  roles: Role[];
+  puedeAprobar?: boolean;
+}[] = [
   { username: 'Hori', password: '1234', roles: ['ADMIN'] },
   { username: 'Gladis', password: '1234', roles: ['ADMIN'] },
-  { username: 'Fernanda', password: '1234', roles: ['ADMINISTRACION'] },
+  { username: 'Fernanda', password: '1234', roles: ['ADMINISTRACION'], puedeAprobar: true },
   { username: 'Camila', password: '1234', roles: ['CELADORA'] },
   { username: 'Seba', password: '1234', roles: ['CHOFER'] },
 ];
@@ -49,7 +54,13 @@ async function main() {
       await prisma.user.update({
         where: { username: user.username },
         data: {
-          ...(RESET_ROLES ? { roles: user.roles, active: true } : {}),
+          ...(RESET_ROLES
+            ? {
+                roles: user.roles,
+                active: true,
+                puedeAprobar: Boolean(user.puedeAprobar),
+              }
+            : {}),
           ...(RESET_PASSWORDS ? { passwordHash: await hash(user.password, 10) } : {}),
         },
       });
@@ -66,6 +77,7 @@ async function main() {
           passwordHash,
           roles: user.roles,
           active: true,
+          puedeAprobar: Boolean(user.puedeAprobar),
         },
       });
       console.log(`✓ Usuario ${user.username} creado (${user.roles.join(', ')})`);

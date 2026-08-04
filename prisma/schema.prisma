@@ -81,6 +81,8 @@ model User {
 
   /// Chofer con vehículo propio (Prestador): no rinde combustible.
   isPrestador Boolean @default(false)
+  /// Administración con permiso de aprobar / observar grillas (supervisor).
+  puedeAprobar Boolean @default(false)
 
   areasComoCeladora       AreaCeladora[]
   areasComoChofer         AreaChofer[]
@@ -308,6 +310,10 @@ model Grilla {
   /// Punto de encuentro de la celadora (si no parte desde la base con el chofer).
   puntoEncuentroId String?
   puntoEncuentro   PuntoEncuentro? @relation(fields: [puntoEncuentroId], references: [id], onDelete: SetNull)
+
+  /// Etiquetas de base (dirección = destino "Base LC").
+  salidaDeBase  Boolean @default(false)
+  retornoABase  Boolean @default(false)
 
   createdById String
   createdBy   User   @relation("GrillaCreador", fields: [createdById], references: [id], onDelete: Restrict)

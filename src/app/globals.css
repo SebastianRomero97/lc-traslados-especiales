@@ -2755,6 +2755,50 @@ button, input, select, textarea {
   background: #fffaf3;
 }
 
+.operativo-finalizar-bar {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.operativo-nav-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.operativo-nav-btn {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.operativo-fila--destino-usado {
+  background: #ecfdf5;
+}
+
+.operativo-fila--destino-usado td {
+  color: #065f46;
+}
+
+.adm-grillas__observar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.adm-grillas__observar input {
+  min-width: 10rem;
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
 .operativo-asistencia-list {
   list-style: none;
   display: flex;

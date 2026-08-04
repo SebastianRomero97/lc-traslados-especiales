@@ -11,11 +11,13 @@ import { AdminAreasManager } from '@/components/panel/AdminAreasManager';
 import { AdminPublicacionesManager } from '@/components/panel/AdminPublicacionesManager';
 import { RespaldoHistorialPanel } from '@/components/panel/RespaldoHistorialPanel';
 import { AdminGrillasRevision } from '@/components/panel/AdminGrillasRevision';
+import { AdministracionGrillasManager } from '@/components/panel/AdministracionGrillasManager';
 
 type Tab =
   | 'usuarios'
   | 'areas'
   | 'grillas'
+  | 'historial'
   | 'transportes'
   | 'pasajeros'
   | 'choferes'
@@ -28,6 +30,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'areas', label: 'Áreas' },
   { id: 'grillas', label: 'Grillas' },
+  { id: 'historial', label: 'Historial' },
   { id: 'transportes', label: 'Transportes' },
   { id: 'pasajeros', label: 'Pasajeros' },
   { id: 'choferes', label: 'Choferes' },
@@ -57,11 +60,13 @@ export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
             </button>
           ))}
         </div>
-
         <div className="admin-tabs__panel" role="tabpanel">
           {tab === 'usuarios' && <AdminUsersManager currentUserId={currentUserId} />}
           {tab === 'areas' && <AdminAreasManager />}
           {tab === 'grillas' && <AdminGrillasRevision />}
+          {tab === 'historial' && (
+            <AdministracionGrillasManager modo="historial" canDelete puedeAprobar />
+          )}
           {tab === 'transportes' && <AdminTransportesManager />}
           {tab === 'pasajeros' && <AdminPasajerosManager />}
           {tab === 'choferes' && <AdminChoferesManager />}

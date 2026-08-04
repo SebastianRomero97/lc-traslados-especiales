@@ -30,6 +30,7 @@ export async function PATCH(request: Request, { params }: Params) {
       roles?: unknown;
       isPrestador?: boolean;
       password?: string;
+      puedeAprobar?: boolean;
     };
 
     const data: {
@@ -38,6 +39,7 @@ export async function PATCH(request: Request, { params }: Params) {
       roles?: Role[];
       transporteId?: null;
       isPrestador?: boolean;
+      puedeAprobar?: boolean;
       passwordHash?: string;
     } = {};
 
@@ -111,6 +113,15 @@ export async function PATCH(request: Request, { params }: Params) {
       data.isPrestador = rolesForCheck.includes('CHOFER') ? body.isPrestador : false;
     }
 
+    if (typeof body.puedeAprobar === 'boolean') {
+      const rolesForCheck = (data.roles ?? existing.roles) as Role[];
+      data.puedeAprobar = rolesForCheck.includes('ADMINISTRACION')
+        ? body.puedeAprobar
+        : false;
+    } else if (data.roles && !data.roles.includes('ADMINISTRACION')) {
+      data.puedeAprobar = false;
+    }
+
     if (typeof body.password === 'string' && body.password.length > 0) {
       const targetIsAdmin = existing.roles.includes('ADMIN');
       if (targetIsAdmin && id !== auth.user.id) {
@@ -139,6 +150,7 @@ export async function PATCH(request: Request, { params }: Params) {
         roles: true,
         active: true,
         isPrestador: true,
+        puedeAprobar: true,
         createdAt: true,
       },
     });

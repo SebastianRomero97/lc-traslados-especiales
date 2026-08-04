@@ -25,7 +25,15 @@ export type SessionUser = {
   roles: Role[];
   /** Chofer con vehículo propio: no rinde combustible. */
   isPrestador?: boolean;
+  /** Administración: puede aprobar/observar grillas (sin ser Admin). */
+  puedeAprobar?: boolean;
 };
+
+/** Admin siempre; Administración solo con flag `puedeAprobar`. */
+export function canApproveGrillas(user: SessionUser): boolean {
+  if (hasRole(user, 'ADMIN')) return true;
+  return hasRole(user, 'ADMINISTRACION') && Boolean(user.puedeAprobar);
+}
 
 export function hasRole(user: { roles: Role[] }, role: Role): boolean {
   return user.roles.includes(role);

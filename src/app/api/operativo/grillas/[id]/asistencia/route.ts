@@ -48,13 +48,21 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!grilla) {
       return NextResponse.json({ message: 'Grilla no encontrada.' }, { status: 404 });
     }
-    if (grilla.estado !== 'APROBADA' && grilla.estado !== 'EN_CURSO') {
+    // Celadora puede registrar aunque el chofer ya finalizó (FINALIZADA).
+    // Chofer (sin celadora) solo en APROBADA / EN_CURSO.
+    const estadosOk =
+      body.rol === 'CELADORA'
+        ? grilla.estado === 'APROBADA' ||
+          grilla.estado === 'EN_CURSO' ||
+          grilla.estado === 'FINALIZADA'
+        : grilla.estado === 'APROBADA' || grilla.estado === 'EN_CURSO';
+    if (!estadosOk) {
       return NextResponse.json(
         { message: 'La grilla aún no está lista para registrar asistencia.' },
         { status: 400 },
       );
     }
-    if (grilla.cierreTipo) {
+    if (grilla.cierreTipo === 'FORZADO_ADMIN' || grilla.cierreTipo === 'INTERRUMPIDO') {
       return NextResponse.json(
         { message: 'Esta jornada ya fue cerrada. No se pueden modificar asistencias.' },
         { status: 400 },
@@ -72,12 +80,14 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const jornadaCerrada =
-      body.rol === 'CELADORA' ? Boolean(grilla.informeCeladora) : Boolean(grilla.informeChofer);
+      body.rol === 'CELADORA'
+        ? Boolean(grilla.informeCeladora)
+        : Boolean(grilla.informeChofer || grilla.combustibleNivel);
     if (jornadaCerrada) {
       return NextResponse.json(
         {
           message:
-            'Esta jornada ya fue cerrada. No se pueden modificar asistencias ni destinos.',
+            'Tu parte ya fue cerrada. No se pueden modificar asistencias ni destinos.',
         },
         { status: 400 },
       );
@@ -88,7 +98,9 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json(
         {
           message:
-            'El recorrido ya fue finalizado. Solo falta el informe para cerrar la jornada.',
+            body.rol === 'CELADORA'
+              ? 'La asistencia ya fue finalizada. Solo falta el informe.'
+              : 'El recorrido ya fue finalizado. Solo falta el informe.',
         },
         { status: 400 },
       );

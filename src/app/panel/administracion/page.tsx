@@ -1,6 +1,7 @@
 import { PanelShell, requireRole } from '@/components/panel/PanelShell';
 import { AdministracionPanelTabs } from '@/components/panel/AdministracionPanelTabs';
 import { welcomeHeading } from '@/lib/greeting';
+import { canApproveGrillas, hasRole } from '@/lib/roles';
 
 export default async function AdministracionPanelPage() {
   const user = await requireRole(['ADMINISTRACION', 'ADMIN']);
@@ -15,7 +16,10 @@ export default async function AdministracionPanelPage() {
         </p>
       </section>
 
-      <AdministracionPanelTabs />
+      <AdministracionPanelTabs
+        canDelete={hasRole(user, 'ADMIN')}
+        puedeAprobar={canApproveGrillas(user)}
+      />
     </PanelShell>
   );
 }

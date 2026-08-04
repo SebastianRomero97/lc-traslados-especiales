@@ -24,7 +24,7 @@ import {
   puedeEditarGrillaAdministracion,
   type EstadoGrilla,
 } from '@/lib/grilla-estado';
-import { hasRole } from '@/lib/roles';
+import { canApproveGrillas, hasRole } from '@/lib/roles';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -126,6 +126,7 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const esAdmin = hasRole(auth.user, 'ADMIN');
+    const puedeAprobar = canApproveGrillas(auth.user);
     const puedeEditar = esAdmin
       ? puedeEditarGrillaAdmin(estadoActual)
       : puedeEditarGrillaAdministracion(estadoActual);
@@ -151,9 +152,11 @@ export async function PATCH(request: Request, { params }: Params) {
       conCeladora?: boolean;
       celadoraId?: string | null;
       puntoEncuentroId?: string | null;
+      salidaDeBase?: boolean;
+      retornoABase?: boolean;
       filas?: GrillaFilaInput[];
       forceReassign?: boolean;
-      /** Admin: tras guardar, deja la grilla lista para empezar. */
+      /** Quien puede aprobar: tras guardar, deja la grilla lista para empezar. */
       aprobarDespues?: boolean;
       /** ISO de updatedAt al abrir el editor (locking optimista). */
       expectedUpdatedAt?: string | null;
@@ -348,7 +351,9 @@ export async function PATCH(request: Request, { params }: Params) {
           conCeladora,
           celadoraId: conCeladora ? celadoraId : null,
           puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
-          ...(esAdmin && body.aprobarDespues
+          ...(body.salidaDeBase !== undefined ? { salidaDeBase: Boolean(body.salidaDeBase) } : {}),
+          ...(body.retornoABase !== undefined ? { retornoABase: Boolean(body.retornoABase) } : {}),
+          ...(puedeAprobar && body.aprobarDespues
             ? { estado: 'APROBADA' as const, notaRevision: null }
             : {}),
         },
@@ -359,7 +364,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json({
       data: grilla,
       message:
-        esAdmin && body.aprobarDespues
+        puedeAprobar && body.aprobarDespues
           ? 'Grilla guardada y aprobada. Lista para empezar.'
           : 'Grilla actualizada.',
     });
@@ -392,6 +397,13 @@ export async function PATCH(request: Request, { params }: Params) {
 export async function DELETE(_request: Request, { params }: Params) {
   const auth = await requireAdministracionApi();
   if ('error' in auth) return auth.error;
+
+  if (!hasRole(auth.user, 'ADMIN')) {
+    return NextResponse.json(
+      { message: 'Solo Admin puede eliminar grillas.' },
+      { status: 403 },
+    );
+  }
 
   const { id } = await params;
 

@@ -151,7 +151,13 @@ export function AdminGrillasRevision() {
             options={options}
             initial={editing}
             aprobarDespues
+            allowDelete
             onSaved={async () => {
+              setEditing(null);
+              setOptions(null);
+              await load();
+            }}
+            onDeleted={async () => {
               setEditing(null);
               setOptions(null);
               await load();

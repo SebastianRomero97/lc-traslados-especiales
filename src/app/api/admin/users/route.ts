@@ -18,6 +18,7 @@ export async function GET() {
       roles: true,
       active: true,
       isPrestador: true,
+      puedeAprobar: true,
       createdAt: true,
     },
   });
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
       roles?: unknown;
       role?: string;
       isPrestador?: boolean;
+      puedeAprobar?: boolean;
     };
 
     const username = body.username?.trim();
@@ -77,6 +79,7 @@ export async function POST(request: Request) {
 
     const roles = rolesInput as Role[];
     const isPrestador = roles.includes('CHOFER') && body.isPrestador === true;
+    const puedeAprobar = roles.includes('ADMINISTRACION') && body.puedeAprobar === true;
 
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) {
@@ -93,6 +96,7 @@ export async function POST(request: Request) {
         passwordHash,
         roles,
         isPrestador,
+        puedeAprobar,
         active: true,
       },
       select: {
@@ -101,6 +105,7 @@ export async function POST(request: Request) {
         roles: true,
         active: true,
         isPrestador: true,
+        puedeAprobar: true,
         createdAt: true,
       },
     });

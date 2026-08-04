@@ -30,6 +30,7 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
     username: user.username,
     roles: user.roles,
     isPrestador: Boolean(user.isPrestador),
+    puedeAprobar: Boolean(user.puedeAprobar),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -59,6 +60,7 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
       username: payload.username,
       roles,
       isPrestador: Boolean(payload.isPrestador),
+      puedeAprobar: Boolean(payload.puedeAprobar),
     };
   } catch {
     return null;
@@ -102,6 +104,7 @@ export async function getSession(): Promise<SessionUser | null> {
         roles: true,
         active: true,
         isPrestador: true,
+        puedeAprobar: true,
       },
     });
 
@@ -115,6 +118,7 @@ export async function getSession(): Promise<SessionUser | null> {
       username: user.username,
       roles,
       isPrestador: Boolean(user.isPrestador),
+      puedeAprobar: Boolean(user.puedeAprobar),
     };
   } catch {
     return null;

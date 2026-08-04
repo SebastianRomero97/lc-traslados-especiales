@@ -46,9 +46,11 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ message: 'Grilla no encontrada.' }, { status: 404 });
     }
 
-    if (grilla.estado === 'FINALIZADA' || grilla.cierreTipo) {
+    // Celadora puede informar aunque el chofer ya dejó FINALIZADA.
+    // Solo Admin forzado/interrumpido cierra todo.
+    if (grilla.cierreTipo === 'FORZADO_ADMIN' || grilla.cierreTipo === 'INTERRUMPIDO') {
       return NextResponse.json(
-        { message: 'Esta jornada ya fue cerrada. No se puede modificar el informe.' },
+        { message: 'Esta jornada ya fue cerrada por Admin. No se puede modificar el informe.' },
         { status: 400 },
       );
     }
@@ -59,13 +61,13 @@ export async function PATCH(request: Request, { params }: Params) {
       }
       if (!grilla.celadoraFinAt) {
         return NextResponse.json(
-          { message: 'Finalizá el recorrido antes de cargar el informe.' },
+          { message: 'Finalizá la asistencia antes de cargar el informe.' },
           { status: 400 },
         );
       }
       if (grilla.informeCeladora) {
         return NextResponse.json(
-          { message: 'Esta jornada ya fue cerrada. No se puede modificar el informe.' },
+          { message: 'Tu informe ya fue enviado. No se puede modificar.' },
           { status: 400 },
         );
       }
@@ -88,6 +90,7 @@ export async function PATCH(request: Request, { params }: Params) {
           informeChoferCeladora: true,
           informeChoferVehiculo: true,
           combustibleNivel: true,
+          estado: true,
         },
       });
       return NextResponse.json({
@@ -100,9 +103,15 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!canAccessAsChofer(grilla, auth.user.id)) {
       return NextResponse.json({ message: 'No sos el chofer de esta grilla.' }, { status: 403 });
     }
+    if (grilla.estado === 'FINALIZADA' || grilla.cierreTipo) {
+      return NextResponse.json(
+        { message: 'Esta jornada ya fue cerrada. No se puede modificar el informe.' },
+        { status: 400 },
+      );
+    }
     if (!grilla.choferFinAt) {
       return NextResponse.json(
-        { message: 'Finalizá el manejo antes de cargar el informe.' },
+        { message: 'Finalizá el recorrido antes de cargar el informe.' },
         { status: 400 },
       );
     }

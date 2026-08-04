@@ -116,6 +116,8 @@ export async function POST(request: Request) {
       choferId?: string;
       celadoraId?: string | null;
       puntoEncuentroId?: string | null;
+      salidaDeBase?: boolean;
+      retornoABase?: boolean;
       filas?: GrillaFilaInput[];
       forceReassign?: boolean;
     };
@@ -272,6 +274,8 @@ export async function POST(request: Request) {
           fecha: fechaDay,
           nota: body.nota?.trim() || null,
           conCeladora,
+          salidaDeBase: Boolean(body.salidaDeBase),
+          retornoABase: Boolean(body.retornoABase),
           areaId: areaId!,
           transporteId: transporteId!,
           choferId: choferId!,

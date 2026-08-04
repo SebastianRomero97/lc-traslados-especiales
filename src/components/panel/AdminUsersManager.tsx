@@ -17,6 +17,7 @@ type AdminUser = {
   roles: Role[];
   active: boolean;
   isPrestador?: boolean;
+  puedeAprobar?: boolean;
   createdAt: string;
 };
 
@@ -25,6 +26,7 @@ type EditForm = {
   active: boolean;
   roles: Role[];
   isPrestador: boolean;
+  puedeAprobar: boolean;
   password: string;
   passwordConfirm: string;
 };
@@ -39,6 +41,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     password: '',
     roles: ['CELADORA'] as Role[],
     isPrestador: false,
+    puedeAprobar: false,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
@@ -46,6 +49,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
     active: true,
     roles: [],
     isPrestador: false,
+    puedeAprobar: false,
     password: '',
     passwordConfirm: '',
   });
@@ -84,6 +88,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
         ...prev,
         roles,
         isPrestador: roles.includes('CHOFER') ? prev.isPrestador : false,
+        puedeAprobar: roles.includes('ADMINISTRACION') ? prev.puedeAprobar : false,
       };
     });
   };
@@ -96,6 +101,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
         ...prev,
         roles,
         isPrestador: roles.includes('CHOFER') ? prev.isPrestador : false,
+        puedeAprobar: roles.includes('ADMINISTRACION') ? prev.puedeAprobar : false,
       };
     });
   };
@@ -107,6 +113,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       active: user.active,
       roles: [...user.roles],
       isPrestador: Boolean(user.isPrestador),
+      puedeAprobar: Boolean(user.puedeAprobar),
       password: '',
       passwordConfirm: '',
     });
@@ -119,6 +126,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       active: true,
       roles: [],
       isPrestador: false,
+      puedeAprobar: false,
       password: '',
       passwordConfirm: '',
     });
@@ -151,6 +159,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
           password: form.password,
           roles: form.roles,
           isPrestador: form.isPrestador,
+          puedeAprobar: form.puedeAprobar,
         }),
       });
 
@@ -160,7 +169,13 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       }
 
       const body = (await response.json()) as { message?: string };
-      setForm({ username: '', password: '', roles: ['CELADORA'], isPrestador: false });
+      setForm({
+        username: '',
+        password: '',
+        roles: ['CELADORA'],
+        isPrestador: false,
+        puedeAprobar: false,
+      });
       popup.success(body.message ?? 'Usuario creado.');
       await loadUsers();
     } catch {
@@ -210,6 +225,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
         active: boolean;
         roles?: Role[];
         isPrestador?: boolean;
+        puedeAprobar?: boolean;
         password?: string;
       } = {
         username: editForm.username.trim(),
@@ -218,6 +234,7 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
       if (!isAdmin) {
         payload.roles = editForm.roles;
         payload.isPrestador = editForm.isPrestador;
+        payload.puedeAprobar = editForm.puedeAprobar;
       }
       if (newPassword && canResetPassword) {
         payload.password = newPassword;
@@ -331,6 +348,18 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                   }
                 />
                 Prestador (vehículo propio, sin rendir combustible)
+              </label>
+            )}
+            {form.roles.includes('ADMINISTRACION') && (
+              <label className="admin-users__role-check" style={{ marginTop: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={form.puedeAprobar}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, puedeAprobar: e.target.checked }))
+                  }
+                />
+                Puede aprobar/observar grillas (supervisor)
               </label>
             )}
           </fieldset>
@@ -451,6 +480,21 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                                 Prestador
                               </label>
                             )}
+                            {editForm.roles.includes('ADMINISTRACION') && (
+                              <label className="admin-users__role-check">
+                                <input
+                                  type="checkbox"
+                                  checked={editForm.puedeAprobar}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      puedeAprobar: e.target.checked,
+                                    }))
+                                  }
+                                />
+                                Puede aprobar
+                              </label>
+                            )}
                           </div>
                         ) : (
                           <div className="admin-users__role-list">
@@ -464,6 +508,11 @@ export function AdminUsersManager({ currentUserId }: { currentUserId: string }) 
                             ))}
                             {user.isPrestador && (
                               <span className="role-badge role-badge--chofer">Prestador</span>
+                            )}
+                            {user.puedeAprobar && user.roles.includes('ADMINISTRACION') && (
+                              <span className="role-badge role-badge--administracion">
+                                Puede aprobar
+                              </span>
                             )}
                           </div>
                         )}

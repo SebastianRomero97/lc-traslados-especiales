@@ -101,6 +101,8 @@ export type GrillaTableroInitial = {
   /** ISO timestamp para locking optimista al guardar. */
   updatedAt?: string;
   conCeladora: boolean;
+  salidaDeBase?: boolean;
+  retornoABase?: boolean;
   transporte: { id: string; nombre: string; tipo: string };
   chofer: { id: string; username: string };
   celadora: { id: string; username: string } | null;
@@ -170,6 +172,8 @@ type Props = {
   defaultTipoItinerario?: TipoItinerario;
   /** Admin: al guardar PATCH, aprueba la grilla (lista para empezar). */
   aprobarDespues?: boolean;
+  /** Solo Admin puede eliminar grillas. */
+  allowDelete?: boolean;
   onSaved: () => void;
   onDeleted?: () => void;
   onCancel: () => void;
@@ -182,6 +186,7 @@ export function GrillaTablero({
   defaultFecha,
   defaultTipoItinerario,
   aprobarDespues = false,
+  allowDelete = false,
   onSaved,
   onDeleted,
   onCancel,
@@ -207,6 +212,8 @@ export function GrillaTablero({
         : todayFechaInput(),
   );
   const [nota, setNota] = useState(initial?.nota ?? '');
+  const [salidaDeBase, setSalidaDeBase] = useState(Boolean(initial?.salidaDeBase));
+  const [retornoABase, setRetornoABase] = useState(Boolean(initial?.retornoABase));
   const [transporteId, setTransporteId] = useState(initial?.transporte.id ?? '');
   const [choferId, setChoferId] = useState(initial?.chofer.id ?? '');
   const [celadoraId, setCeladoraId] = useState(initial?.celadora?.id ?? '');
@@ -791,6 +798,8 @@ export function GrillaTablero({
         conCeladora: Boolean(celadoraId),
         celadoraId: celadoraId || null,
         puntoEncuentroId: resolvedPunto,
+        salidaDeBase,
+        retornoABase,
         expectedUpdatedAt: !isNew ? expectedUpdatedAt : undefined,
         filas: filas.map((f) => ({
           hora: f.hora || null,
@@ -1106,7 +1115,7 @@ export function GrillaTablero({
           >
             Sugerir horarios
           </button>
-          {!isNew && (
+          {!isNew && allowDelete && (
             <button
               type="button"
               className="btn btn--danger btn--sm"
@@ -1214,6 +1223,37 @@ export function GrillaTablero({
             onChange={(e) => setNota(e.target.value)}
             placeholder="Nota del día"
           />
+        </div>
+        <div className="form-group grilla-tablero__base-flags">
+          <label>Base LC</label>
+          <div className="admin-users__role-checks" style={{ marginTop: '0.35rem' }}>
+            <label className="admin-users__role-check">
+              <input
+                type="checkbox"
+                checked={salidaDeBase}
+                onChange={(e) => setSalidaDeBase(e.target.checked)}
+              />
+              Salida de base
+            </label>
+            <label className="admin-users__role-check">
+              <input
+                type="checkbox"
+                checked={retornoABase}
+                onChange={(e) => setRetornoABase(e.target.checked)}
+              />
+              Retorno a base
+            </label>
+          </div>
+          {(salidaDeBase || retornoABase) && (
+            <p className="panel-card__desc" style={{ margin: '0.35rem 0 0' }}>
+              {(() => {
+                const base = options.destinos.find((d) => /^base\s*lc$/i.test(d.nombre.trim()));
+                return base
+                  ? `Dirección Base LC: ${base.domicilio}`
+                  : 'Creá el destino activo “Base LC” en Admin → Áreas para usar su domicilio.';
+              })()}
+            </p>
+          )}
         </div>
       </div>
 

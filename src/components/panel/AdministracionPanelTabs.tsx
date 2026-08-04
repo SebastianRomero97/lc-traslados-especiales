@@ -10,7 +10,13 @@ import { PublicacionesBanner } from '@/components/panel/PublicacionesBanner';
 
 type Tab = 'areas' | 'grillas' | 'historial' | 'informe' | 'respaldo' | 'novedades';
 
-export function AdministracionPanelTabs() {
+export function AdministracionPanelTabs({
+  canDelete = false,
+  puedeAprobar = false,
+}: {
+  canDelete?: boolean;
+  puedeAprobar?: boolean;
+}) {
   const [tab, setTab] = useState<Tab>('areas');
 
   return (
@@ -77,8 +83,20 @@ export function AdministracionPanelTabs() {
 
         <div className="admin-tabs__panel" role="tabpanel">
           {tab === 'areas' && <AdministracionDashboard />}
-          {tab === 'grillas' && <AdministracionGrillasManager modo="principal" />}
-          {tab === 'historial' && <AdministracionGrillasManager modo="historial" />}
+          {tab === 'grillas' && (
+            <AdministracionGrillasManager
+              modo="principal"
+              canDelete={canDelete}
+              puedeAprobar={puedeAprobar}
+            />
+          )}
+          {tab === 'historial' && (
+            <AdministracionGrillasManager
+              modo="historial"
+              canDelete={canDelete}
+              puedeAprobar={puedeAprobar}
+            />
+          )}
           {tab === 'informe' && <InformeMetricasPanel />}
           {tab === 'respaldo' && <RespaldoHistorialPanel />}
           {tab === 'novedades' && <NovedadesVehiculoPanel />}
