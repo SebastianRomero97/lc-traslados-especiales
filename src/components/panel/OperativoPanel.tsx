@@ -70,7 +70,7 @@ type GrillaOperativa = {
     pasajeroNombre: string;
     pasajeroId: string | null;
     destinoId: string | null;
-    accion: 'SUBE' | 'BAJA' | 'TRASBORDO';
+    accion: string;
     trasbordoHacia: string | null;
     lat?: number | null;
     lon?: number | null;
@@ -113,6 +113,9 @@ export function OperativoPanel({
     vehiculo: '',
     combustible: '' as '' | NivelCombustible,
   });
+  const [navGoogleMaps, setNavGoogleMaps] = useState(true);
+  const [navWaze, setNavWaze] = useState(true);
+  const [navPrefBusy, setNavPrefBusy] = useState(false);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -145,6 +148,51 @@ export function OperativoPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (rol !== 'CHOFER') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/operativo/preferencias-nav');
+        const body = await response.json();
+        if (!response.ok || cancelled) return;
+        const data = body.data as { navGoogleMaps?: boolean; navWaze?: boolean };
+        setNavGoogleMaps(data.navGoogleMaps !== false);
+        setNavWaze(data.navWaze !== false);
+      } catch {
+        /* default ambos */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rol]);
+
+  const saveNavPreferencias = async (nextMaps: boolean, nextWaze: boolean) => {
+    if (!nextMaps && !nextWaze) {
+      popup.error('Tenés que dejar marcada al menos una app de navegación.');
+      return;
+    }
+    setNavGoogleMaps(nextMaps);
+    setNavWaze(nextWaze);
+    setNavPrefBusy(true);
+    try {
+      const response = await fetch('/api/operativo/preferencias-nav', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ navGoogleMaps: nextMaps, navWaze: nextWaze }),
+      });
+      if (!response.ok) {
+        popup.error(await readApiError(response, 'No se pudo guardar la preferencia.'));
+        return;
+      }
+    } catch {
+      popup.error('Error de conexión al guardar la preferencia.');
+    } finally {
+      setNavPrefBusy(false);
+    }
+  };
 
   // Refresco periódico para enterarse de cierres Admin / cambios de estado.
   useEffect(() => {
@@ -379,17 +427,49 @@ export function OperativoPanel({
         <ChoferVehiculoSection isPrestador={isPrestador} />
       ) : loading ? (
         <p className="panel-card__desc">Cargando grillas asignadas...</p>
-      ) : grillasSeccion.length === 0 ? (
-        <section className="panel-card panel-card--nested">
-          <h2>{seccion === 'historial' ? 'Historial' : 'Principal'}</h2>
-          <p className="panel-card__desc">
-            {seccion === 'historial'
-              ? 'Todavía no hay grillas completadas.'
-              : 'No hay grillas nuevas asignadas. Cuando Administración te asigne una, va a aparecer acá.'}
-          </p>
-        </section>
       ) : (
         <>
+          {seccion === 'principal' && rol === 'CHOFER' && (
+            <section className="panel-card">
+              <h2>Navegación</h2>
+              <p className="panel-card__desc">
+                Elegí qué apps querés ver en el itinerario de la grilla. Tiene que quedar al menos
+                una marcada.
+              </p>
+              <div className="operativo-nav-prefs">
+                <label className="operativo-nav-prefs__check">
+                  <input
+                    type="checkbox"
+                    checked={navGoogleMaps}
+                    disabled={navPrefBusy}
+                    onChange={(e) => void saveNavPreferencias(e.target.checked, navWaze)}
+                  />
+                  Google Maps
+                </label>
+                <label className="operativo-nav-prefs__check">
+                  <input
+                    type="checkbox"
+                    checked={navWaze}
+                    disabled={navPrefBusy}
+                    onChange={(e) => void saveNavPreferencias(navGoogleMaps, e.target.checked)}
+                  />
+                  Waze
+                </label>
+              </div>
+            </section>
+          )}
+
+          {grillasSeccion.length === 0 ? (
+            <section className="panel-card panel-card--nested">
+              <h2>{seccion === 'historial' ? 'Historial' : 'Principal'}</h2>
+              <p className="panel-card__desc">
+                {seccion === 'historial'
+                  ? 'Todavía no hay grillas completadas.'
+                  : 'No hay grillas nuevas asignadas. Cuando Administración te asigne una, va a aparecer acá.'}
+              </p>
+            </section>
+          ) : (
+            <>
           <section className="panel-card">
             <h2>{seccion === 'historial' ? 'Grillas completadas' : 'Grillas nuevas'}</h2>
             <p className="panel-card__desc">
@@ -600,13 +680,11 @@ export function OperativoPanel({
                                   <strong>{keyNombre || '—'}</strong>
                                 )}
                                 <span className="operativo-ruta-item__accion">
-                                  {f.accion === 'SUBE'
-                                    ? 'Sube'
-                                    : f.accion === 'BAJA'
-                                      ? 'Baja'
-                                      : f.trasbordoHacia?.trim()
-                                        ? `Trasbordo → ${f.trasbordoHacia.trim()}`
-                                        : 'Trasbordo'}
+                                  {formatAccionFila({
+                                    accion: f.accion,
+                                    pasajeroNombre: f.pasajeroNombre,
+                                    trasbordoHacia: f.trasbordoHacia,
+                                  })}
                                 </span>
                                 {actual && (
                                   <span className="operativo-asistencia-estado">
@@ -795,22 +873,26 @@ export function OperativoPanel({
                                         });
                                         return (
                                           <>
-                                            <a
-                                              className="btn btn--outline operativo-nav-btn"
-                                              href={urls.maps}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                            >
-                                              Google Maps
-                                            </a>
-                                            <a
-                                              className="btn btn--outline operativo-nav-btn"
-                                              href={urls.waze}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                            >
-                                              Waze
-                                            </a>
+                                            {navGoogleMaps && (
+                                              <a
+                                                className="btn btn--outline operativo-nav-btn"
+                                                href={urls.maps}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                              >
+                                                Google Maps
+                                              </a>
+                                            )}
+                                            {navWaze && (
+                                              <a
+                                                className="btn btn--outline operativo-nav-btn"
+                                                href={urls.waze}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                              >
+                                                Waze
+                                              </a>
+                                            )}
                                           </>
                                         );
                                       })()}
@@ -1082,6 +1164,8 @@ export function OperativoPanel({
                   )}
                 </>
               )}
+            </>
+          )}
             </>
           )}
         </>

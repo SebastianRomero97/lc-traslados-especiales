@@ -64,6 +64,15 @@ export function grillaBloqueadaOperativa(estado: EstadoGrilla): boolean {
   return estado === 'EN_CURSO' || estado === 'FINALIZADA';
 }
 
+/**
+ * Ciclo (resumen):
+ * BORRADOR → EN_REVISION → (OBSERVADA)* → APROBADA (visible operativo)
+ * → EN_CURSO (chofer inicia) → FINALIZADA (chofer/informe o cierre Admin) → Historial.
+ */
+export function esGrillaEnHistorial(estado: EstadoGrilla | string | null | undefined): boolean {
+  return normalizeEstadoGrilla(estado) === 'FINALIZADA';
+}
+
 /** Al pedir Editar desde Lista para empezar → vuelve a borrador. */
 export function puedeVolverABorrador(estado: EstadoGrilla): boolean {
   return estado === 'APROBADA' || estado === 'EN_REVISION' || estado === 'OBSERVADA';

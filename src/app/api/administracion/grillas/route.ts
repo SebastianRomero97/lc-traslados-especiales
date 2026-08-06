@@ -56,6 +56,7 @@ export async function GET(request: Request) {
     const tipoGrupoRaw = searchParams.get('tipoGrupo')?.trim() || undefined;
     const tipoGrupo =
       tipoGrupoRaw && isTipoGrupoItinerario(tipoGrupoRaw) ? tipoGrupoRaw : undefined;
+    const vista = searchParams.get('vista')?.trim() || undefined;
 
     const fechaFilter =
       from || to
@@ -75,11 +76,19 @@ export async function GET(request: Request) {
           }
         : {};
 
+    const estadoFilter =
+      vista === 'historial'
+        ? { estado: 'FINALIZADA' as const }
+        : vista === 'activas'
+          ? { estado: { not: 'FINALIZADA' as const } }
+          : {};
+
     const grillas = await prisma.grilla.findMany({
       where: {
         ...(areaId ? { areaId } : {}),
         ...fechaFilter,
         ...tipoGrupoWhere(tipoGrupo),
+        ...estadoFilter,
       },
       orderBy: [{ fecha: 'desc' }, { createdAt: 'desc' }],
       include: grillaInclude,

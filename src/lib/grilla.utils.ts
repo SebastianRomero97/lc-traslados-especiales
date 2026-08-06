@@ -1,4 +1,23 @@
-export type AccionParada = 'SUBE' | 'BAJA' | 'TRASBORDO';
+export type AccionParada = 'SUBE' | 'BAJA' | 'TRASBORDO' | 'SALIDA_BASE' | 'RETORNO_BASE';
+
+export function isAccionBaseLc(accion: string): boolean {
+  return accion === 'SALIDA_BASE' || accion === 'RETORNO_BASE';
+}
+
+export function labelAccionParada(accion: string): string {
+  switch (normalizeAccion(accion)) {
+    case 'BAJA':
+      return 'Baja';
+    case 'TRASBORDO':
+      return 'Trasbordo';
+    case 'SALIDA_BASE':
+      return 'Salida de base';
+    case 'RETORNO_BASE':
+      return 'Retorno a base';
+    default:
+      return 'Sube';
+  }
+}
 
 export type TipoParadaForm = 'pasajero' | 'destino' | 'trasbordo';
 
@@ -178,19 +197,24 @@ export function formatAccionFila(params: {
   pasajeroNombre: string;
   trasbordoHacia?: string | null;
 }): string {
-  const accion = params.accion.toLowerCase();
   if (params.accion === 'TRASBORDO') {
     const hacia = params.trasbordoHacia?.trim();
     return hacia
       ? `trasbordo ${params.pasajeroNombre} → ${hacia}`
       : `trasbordo ${params.pasajeroNombre}`;
   }
+  if (isAccionBaseLc(params.accion)) {
+    return labelAccionParada(params.accion);
+  }
+  const accion = params.accion.toLowerCase();
   return `${accion} ${params.pasajeroNombre}`;
 }
 
 export function normalizeAccion(accion: string): AccionParada {
   if (accion === 'BAJA') return 'BAJA';
   if (accion === 'TRASBORDO') return 'TRASBORDO';
+  if (accion === 'SALIDA_BASE') return 'SALIDA_BASE';
+  if (accion === 'RETORNO_BASE') return 'RETORNO_BASE';
   return 'SUBE';
 }
 
@@ -209,9 +233,30 @@ export function accionPorTipoParada(
   return sentido === 'INGRESO' ? 'SUBE' : 'BAJA';
 }
 
+/** Base LC: en Salidas suele salir de base; en Ingresos suele retornar. */
+export function accionPorDestinoBaseLc(
+  tipoItinerario: TipoItinerario | SentidoItinerario | string,
+): AccionParada {
+  return sentidoItinerario(tipoItinerario) === 'INGRESO' ? 'RETORNO_BASE' : 'SALIDA_BASE';
+}
+
+/** Migración suave: filas viejas Base LC con Sube/Baja → Salida/Retorno. */
+export function coerceAccionDestinoBaseLc(
+  accion: string,
+  tipoItinerario?: TipoItinerario | SentidoItinerario | string,
+): AccionParada {
+  const a = normalizeAccion(accion);
+  if (a === 'SALIDA_BASE' || a === 'RETORNO_BASE') return a;
+  if (a === 'BAJA') return 'RETORNO_BASE';
+  if (a === 'SUBE') return 'SALIDA_BASE';
+  return tipoItinerario ? accionPorDestinoBaseLc(tipoItinerario) : 'SALIDA_BASE';
+}
+
 export function invertirAccionSubeBaja(accion: AccionParada): AccionParada {
   if (accion === 'SUBE') return 'BAJA';
   if (accion === 'BAJA') return 'SUBE';
+  if (accion === 'SALIDA_BASE') return 'RETORNO_BASE';
+  if (accion === 'RETORNO_BASE') return 'SALIDA_BASE';
   return accion;
 }
 
@@ -221,6 +266,9 @@ export function buildDetalleDestino(params: {
   accion: AccionParada;
   pasajeroNombres?: string[];
 }): string {
+  if (isAccionBaseLc(params.accion)) {
+    return labelAccionParada(params.accion);
+  }
   const names = (params.pasajeroNombres ?? []).map((n) => n.trim()).filter(Boolean);
   if (names.length === 0) {
     return `pasajeros → ${params.destinoNombre}`;

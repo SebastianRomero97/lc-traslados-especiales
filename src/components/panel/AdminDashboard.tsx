@@ -27,21 +27,21 @@ type Tab =
   | 'novedades';
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'pasajeros', label: 'Pasajeros' },
   { id: 'usuarios', label: 'Usuarios' },
+  { id: 'choferes', label: 'Choferes' },
+  { id: 'transportes', label: 'Transportes' },
   { id: 'areas', label: 'Áreas' },
   { id: 'grillas', label: 'Grillas' },
   { id: 'historial', label: 'Historial' },
-  { id: 'transportes', label: 'Transportes' },
-  { id: 'pasajeros', label: 'Pasajeros' },
-  { id: 'choferes', label: 'Choferes' },
-  { id: 'informe', label: 'Informe' },
   { id: 'respaldo', label: 'Respaldo' },
-  { id: 'publicaciones', label: 'Publicaciones' },
+  { id: 'informe', label: 'Informe' },
   { id: 'novedades', label: 'Novedades' },
+  { id: 'publicaciones', label: 'Publicaciones' },
 ];
 
 export function AdminDashboard({ currentUserId }: { currentUserId: string }) {
-  const [tab, setTab] = useState<Tab>('usuarios');
+  const [tab, setTab] = useState<Tab>('pasajeros');
 
   return (
     <div className="admin-dashboard">

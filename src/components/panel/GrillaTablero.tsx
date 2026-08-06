@@ -4,9 +4,13 @@ import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 import {
+  accionPorDestinoBaseLc,
   accionPorTipoParada,
   buildDetalleDestino,
   buildTipoItinerario,
+  coerceAccionDestinoBaseLc,
+  invertirAccionSubeBaja,
+  isAccionBaseLc,
   isSalidaItinerario,
   mapGrillaFilaToForm,
   splitTipoItinerario,
@@ -18,6 +22,7 @@ import {
   type TipoItinerario,
   type TipoParadaForm,
 } from '@/lib/grilla.utils';
+import { isBaseLcNombre } from '@/lib/base-lc.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import type { MapaParada } from '@/lib/osm-maps';
 
@@ -212,8 +217,6 @@ export function GrillaTablero({
         : todayFechaInput(),
   );
   const [nota, setNota] = useState(initial?.nota ?? '');
-  const [salidaDeBase, setSalidaDeBase] = useState(Boolean(initial?.salidaDeBase));
-  const [retornoABase, setRetornoABase] = useState(Boolean(initial?.retornoABase));
   const [transporteId, setTransporteId] = useState(initial?.transporte.id ?? '');
   const [choferId, setChoferId] = useState(initial?.chofer.id ?? '');
   const [celadoraId, setCeladoraId] = useState(initial?.celadora?.id ?? '');
@@ -245,11 +248,26 @@ export function GrillaTablero({
 
   const [filas, setFilas] = useState<FilaBoard[]>(() =>
     initial?.filas?.length
-      ? initial.filas.map((f) => ({
-          ...mapGrillaFilaToForm(f),
-          clientId: newClientId(),
-          detalleManual: false,
-        }))
+      ? initial.filas.map((f) => {
+          const mapped = mapGrillaFilaToForm(f);
+          const destino = options.destinos.find((d) => d.id === mapped.destinoId);
+          const esBase = Boolean(destino && isBaseLcNombre(destino.nombre));
+          const accion = esBase
+            ? coerceAccionDestinoBaseLc(mapped.accion, initial?.tipoItinerario)
+            : mapped.accion;
+          return {
+            ...mapped,
+            accion,
+            clientId: newClientId(),
+            detalleManual: false,
+            pasajeroNombre: esBase
+              ? buildDetalleDestino({
+                  destinoNombre: destino?.nombre ?? mapped.pasajeroNombre,
+                  accion,
+                })
+              : mapped.pasajeroNombre,
+          };
+        })
       : [],
   );
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | null>(
@@ -368,6 +386,15 @@ export function GrillaTablero({
         if (fila.tipoParada !== 'destino' || !fila.destinoId || fila.detalleManual) return fila;
         const destino = options.destinos.find((d) => d.id === fila.destinoId);
         if (!destino) return fila;
+        if (isBaseLcNombre(destino.nombre) || isAccionBaseLc(fila.accion)) {
+          const detalle = buildDetalleDestino({
+            destinoNombre: destino.nombre,
+            accion: fila.accion,
+          });
+          if (detalle === fila.pasajeroNombre) return fila;
+          changed = true;
+          return { ...fila, pasajeroNombre: detalle };
+        }
         const detalle = buildDetalleDestino({
           destinoNombre: destino.nombre,
           accion: fila.accion,
@@ -472,7 +499,10 @@ export function GrillaTablero({
   const addDestinoFila = (destinoId: string) => {
     const d = options.destinos.find((x) => x.id === destinoId);
     if (!d) return;
-    const accion = accionPorTipoParada('destino', tipoItinerario);
+    const esBase = isBaseLcNombre(d.nombre);
+    const accion = esBase
+      ? accionPorDestinoBaseLc(tipoItinerario)
+      : accionPorTipoParada('destino', tipoItinerario);
     setFilas((prev) => [
       ...prev,
       {
@@ -483,7 +513,7 @@ export function GrillaTablero({
         pasajeroNombre: buildDetalleDestino({
           destinoNombre: d.nombre,
           accion,
-          pasajeroNombres: nombresPasajerosDeDestino(destinoId),
+          pasajeroNombres: esBase ? undefined : nombresPasajerosDeDestino(destinoId),
         }),
         detalleManual: false,
         pasajeroId: '',
@@ -536,8 +566,7 @@ export function GrillaTablero({
     setFilas((list) =>
       list.map((fila) => {
         if (fila.tipoParada === 'trasbordo') return fila;
-        const accion =
-          fila.accion === 'SUBE' ? 'BAJA' : fila.accion === 'BAJA' ? 'SUBE' : fila.accion;
+        const accion = invertirAccionSubeBaja(fila.accion);
         if (fila.tipoParada === 'destino' && fila.destinoId) {
           if (fila.detalleManual) return { ...fila, accion };
           const destino = options.destinos.find((d) => d.id === fila.destinoId);
@@ -547,7 +576,10 @@ export function GrillaTablero({
             pasajeroNombre: buildDetalleDestino({
               destinoNombre: destino?.nombre ?? fila.pasajeroNombre,
               accion,
-              pasajeroNombres: nombresPasajerosDeDestino(fila.destinoId),
+              pasajeroNombres:
+                destino && isBaseLcNombre(destino.nombre)
+                  ? undefined
+                  : nombresPasajerosDeDestino(fila.destinoId),
             }),
           };
         }
@@ -787,6 +819,8 @@ export function GrillaTablero({
     setSubmitting(true);
     try {
       const resolvedPunto = await resolvePuntoEncuentroId();
+      const salidaDeBase = filas.some((f) => f.accion === 'SALIDA_BASE');
+      const retornoABase = filas.some((f) => f.accion === 'RETORNO_BASE');
       const payload = {
         nombre: nombre.trim(),
         tipoItinerario,
@@ -1224,37 +1258,6 @@ export function GrillaTablero({
             placeholder="Nota del día"
           />
         </div>
-        <div className="form-group grilla-tablero__base-flags">
-          <label>Base LC</label>
-          <div className="admin-users__role-checks" style={{ marginTop: '0.35rem' }}>
-            <label className="admin-users__role-check">
-              <input
-                type="checkbox"
-                checked={salidaDeBase}
-                onChange={(e) => setSalidaDeBase(e.target.checked)}
-              />
-              Salida de base
-            </label>
-            <label className="admin-users__role-check">
-              <input
-                type="checkbox"
-                checked={retornoABase}
-                onChange={(e) => setRetornoABase(e.target.checked)}
-              />
-              Retorno a base
-            </label>
-          </div>
-          {(salidaDeBase || retornoABase) && (
-            <p className="panel-card__desc" style={{ margin: '0.35rem 0 0' }}>
-              {(() => {
-                const base = options.destinos.find((d) => /^base\s*lc$/i.test(d.nombre.trim()));
-                return base
-                  ? `Dirección Base LC: ${base.domicilio}`
-                  : 'Creá el destino activo “Base LC” en Admin → Áreas para usar su domicilio.';
-              })()}
-            </p>
-          )}
-        </div>
       </div>
 
       <div className="grilla-tablero__layout">
@@ -1584,7 +1587,18 @@ export function GrillaTablero({
                   <div className="form-group grilla-fila__accion">
                     <label>Acción</label>
                     <select
-                      value={fila.accion}
+                      value={
+                        (() => {
+                          const destino = options.destinos.find((d) => d.id === fila.destinoId);
+                          const esBase =
+                            fila.tipoParada === 'destino' &&
+                            Boolean(destino && isBaseLcNombre(destino.nombre));
+                          if (esBase && !isAccionBaseLc(fila.accion)) {
+                            return coerceAccionDestinoBaseLc(fila.accion, tipoItinerario);
+                          }
+                          return fila.accion;
+                        })()
+                      }
                       onChange={(e) => {
                         const accion = e.target.value as AccionParada;
                         setFilas((prev) =>
@@ -1600,21 +1614,47 @@ export function GrillaTablero({
                               return {
                                 ...f,
                                 accion,
+                                trasbordoHacia: '',
                                 pasajeroNombre: buildDetalleDestino({
                                   destinoNombre: destino?.nombre ?? f.pasajeroNombre,
                                   accion,
-                                  pasajeroNombres: nombresPasajerosDeDestino(f.destinoId),
+                                  pasajeroNombres:
+                                    destino && isBaseLcNombre(destino.nombre)
+                                      ? undefined
+                                      : nombresPasajerosDeDestino(f.destinoId),
                                 }),
                               };
                             }
-                            return { ...f, accion };
+                            return {
+                              ...f,
+                              accion,
+                              trasbordoHacia: accion === 'TRASBORDO' ? f.trasbordoHacia : '',
+                            };
                           }),
                         );
                       }}
                     >
-                      <option value="SUBE">Sube</option>
-                      <option value="BAJA">Baja</option>
-                      <option value="TRASBORDO">Trasbordo</option>
+                      {(() => {
+                        const destino = options.destinos.find((d) => d.id === fila.destinoId);
+                        const esBase =
+                          fila.tipoParada === 'destino' &&
+                          Boolean(destino && isBaseLcNombre(destino.nombre));
+                        if (esBase) {
+                          return (
+                            <>
+                              <option value="SALIDA_BASE">Salida de base</option>
+                              <option value="RETORNO_BASE">Retorno a base</option>
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <option value="SUBE">Sube</option>
+                            <option value="BAJA">Baja</option>
+                            <option value="TRASBORDO">Trasbordo</option>
+                          </>
+                        );
+                      })()}
                     </select>
                   </div>
 

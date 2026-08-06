@@ -35,6 +35,7 @@ import {
   puedeEditarGrillaAdministracion,
 } from '@/lib/grilla-estado';
 import { GrillaEstadoChip } from '@/components/panel/GrillaEstadoChip';
+import { GrillaPrintPanel } from '@/components/panel/GrillaPrintPanel';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import {
   GrillaTablero,
@@ -77,6 +78,8 @@ export function AdministracionGrillasManager({
   const [createFecha, setCreateFecha] = useState(todayFechaInput());
 
   const [observarDraft, setObservarDraft] = useState<Record<string, string>>({});
+  const [historialDetalle, setHistorialDetalle] = useState<GrillaPrintInput | null>(null);
+  const [historialDetalleLoading, setHistorialDetalleLoading] = useState(false);
   const [periodo, setPeriodo] = useState<PeriodoVista>('hoy');
   const [tipoGrupo, setTipoGrupo] = useState<TipoGrupoItinerario>('ingreso');
   const [weekMonday, setWeekMonday] = useState(() => mondayOfWeek(todayFechaInput()));
@@ -117,6 +120,7 @@ export function AdministracionGrillasManager({
     async (selectedArea: string) => {
       const params = new URLSearchParams();
       if (selectedArea) params.set('areaId', selectedArea);
+      params.set('vista', esHistorial ? 'historial' : 'activas');
       if (!esHistorial) {
         if (rangeForLoad.from) params.set('from', rangeForLoad.from);
         if (rangeForLoad.to) params.set('to', rangeForLoad.to);
@@ -448,6 +452,36 @@ export function AdministracionGrillasManager({
     }
   };
 
+  useEffect(() => {
+    if (!esHistorial || !selectedId) {
+      setHistorialDetalle(null);
+      setHistorialDetalleLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setHistorialDetalleLoading(true);
+    setHistorialDetalle(null);
+    void (async () => {
+      try {
+        const full = await loadGrillaExport(selectedId);
+        if (cancelled) return;
+        setHistorialDetalle(toPrintInput(full));
+      } catch (error) {
+        if (cancelled) return;
+        setHistorialDetalle(null);
+        popup.error(
+          error instanceof Error ? error.message : 'No se pudo cargar el detalle del historial.',
+        );
+      } finally {
+        if (!cancelled) setHistorialDetalleLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers del mismo render
+  }, [esHistorial, selectedId]);
+
   const renderAcciones = (g: GrillaListItem, compact = false) => {
     const estado = normalizeEstadoGrilla(g.estado);
     const puedeEnviar = puedeEditarGrillaAdministracion(estado);
@@ -608,46 +642,62 @@ export function AdministracionGrillasManager({
           })}{' '}
           <GrillaEstadoChip estado={selected.estado} />
         </h2>
-        <p className="panel-card__desc">
-          Responsables:{' '}
-          {selected.conCeladora
-            ? `${selected.chofer.username} + ${selected.celadora?.username ?? '—'}`
-            : `${selected.chofer.username} (sin celadora)`}{' '}
-          · Tipo: {selected.transporte.tipo}
-        </p>
-        {selected.notaRevision && selected.estado === 'OBSERVADA' ? (
-          <p className="grilla-preview__nota">Corregir: {selected.notaRevision}</p>
-        ) : null}
-        {selected.nota && <p className="grilla-preview__nota">{selected.nota}</p>}
-        {!esHistorial && (
-          <div style={{ marginBottom: '0.75rem' }}>{renderAcciones(selected, true)}</div>
+        {esHistorial ? (
+          <>
+            <p className="panel-card__desc">
+              Vista de historial (mismo contenido que Imprimir). Solo lectura.
+            </p>
+            <div style={{ marginBottom: '0.75rem' }}>{renderAcciones(selected, true)}</div>
+            {historialDetalleLoading ? (
+              <p className="panel-card__desc">Cargando asistencias…</p>
+            ) : historialDetalle ? (
+              <GrillaPrintPanel grilla={historialDetalle} />
+            ) : (
+              <p className="panel-card__desc">No se pudo cargar el detalle.</p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="panel-card__desc">
+              Responsables:{' '}
+              {selected.conCeladora
+                ? `${selected.chofer.username} + ${selected.celadora?.username ?? '—'}`
+                : `${selected.chofer.username} (sin celadora)`}{' '}
+              · Tipo: {selected.transporte.tipo}
+            </p>
+            {selected.notaRevision && selected.estado === 'OBSERVADA' ? (
+              <p className="grilla-preview__nota">Corregir: {selected.notaRevision}</p>
+            ) : null}
+            {selected.nota && <p className="grilla-preview__nota">{selected.nota}</p>}
+            <div style={{ marginBottom: '0.75rem' }}>{renderAcciones(selected, true)}</div>
+            <div className="admin-users__table-wrap">
+              <table className="admin-users__table grilla-preview__table">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th>Parada / dirección</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.filas.map((f) => (
+                    <tr key={f.id}>
+                      <td>{f.hora ?? '—'}</td>
+                      <td>{f.direccion}</td>
+                      <td>
+                        {formatAccionFila({
+                          accion: f.accion as AccionParada,
+                          pasajeroNombre: f.pasajeroNombre,
+                          trasbordoHacia: f.trasbordoHacia,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
-        <div className="admin-users__table-wrap">
-          <table className="admin-users__table grilla-preview__table">
-            <thead>
-              <tr>
-                <th>Hora</th>
-                <th>Parada / dirección</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selected.filas.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.hora ?? '—'}</td>
-                  <td>{f.direccion}</td>
-                  <td>
-                    {formatAccionFila({
-                      accion: f.accion as AccionParada,
-                      pasajeroNombre: f.pasajeroNombre,
-                      trasbordoHacia: f.trasbordoHacia,
-                    })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
     ) : null;
 
@@ -687,7 +737,8 @@ export function AdministracionGrillasManager({
             <div>
               <h2>Historial de grillas</h2>
               <p className="panel-card__desc">
-                Listado completo del área. Podés usar una grilla como base para armar otra.
+                Solo grillas finalizadas (recorrido cerrado). Al Ver, ves el mismo contenido que
+                Imprimir. Podés usar una como base para armar otra.
               </p>
             </div>
           </div>
@@ -708,7 +759,7 @@ export function AdministracionGrillasManager({
               ))}
             </select>
           </div>
-          {renderListaDetalle(grillasVisibles, 'Todavía no hay grillas en esta área.')}
+          {renderListaDetalle(grillasVisibles, 'Todavía no hay grillas finalizadas en esta área.')}
         </section>
         {renderPreview()}
       </div>

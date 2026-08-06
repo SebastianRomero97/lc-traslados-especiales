@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Nunito, Outfit } from 'next/font/google';
 import { siteConfig } from '@/config/site.config';
+import { RouteTransitionLoader } from '@/components/ui/RouteTransitionLoader';
 import './globals.css';
 
 const nunito = Nunito({
@@ -28,7 +29,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={`${nunito.variable} ${outfit.variable}`}>
-      <body>{children}</body>
+      <body>
+        <RouteTransitionLoader />
+        {children}
+      </body>
     </html>
   );
 }

@@ -32,6 +32,8 @@ enum AccionParada {
   SUBE
   BAJA
   TRASBORDO
+  SALIDA_BASE
+  RETORNO_BASE
 }
 
 enum EstadoAsistencia {
@@ -83,6 +85,10 @@ model User {
   isPrestador Boolean @default(false)
   /// Administración con permiso de aprobar / observar grillas (supervisor).
   puedeAprobar Boolean @default(false)
+  /// Chofer: mostrar botón Google Maps en el itinerario.
+  navGoogleMaps Boolean @default(true)
+  /// Chofer: mostrar botón Waze en el itinerario.
+  navWaze Boolean @default(true)
 
   areasComoCeladora       AreaCeladora[]
   areasComoChofer         AreaChofer[]
