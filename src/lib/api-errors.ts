@@ -35,7 +35,7 @@ function relationHintFromMeta(meta: { field_name?: string; modelName?: string } 
     return 'Hay asistencias registradas que dependen de este registro.';
   }
   if (blob.includes('area')) {
-    return 'Hay áreas o asignaciones vinculadas.';
+    return 'Hay zonas o asignaciones vinculadas.';
   }
   if (blob.includes('transporte') || blob.includes('vehiculo')) {
     return 'Hay transportes, grillas o novedades vinculadas.';

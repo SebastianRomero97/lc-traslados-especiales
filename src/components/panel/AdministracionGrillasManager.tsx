@@ -284,6 +284,7 @@ export function AdministracionGrillasManager({
       fecha: hoy,
       nota: grilla.nota,
       conCeladora: grilla.conCeladora,
+      celadoraHaceTrasbordo: Boolean(grilla.celadoraHaceTrasbordo),
       salidaDeBase: Boolean(grilla.salidaDeBase),
       retornoABase: Boolean(grilla.retornoABase),
       transporte: grilla.transporte,
@@ -311,6 +312,7 @@ export function AdministracionGrillasManager({
         fecha: hoy,
         nota: grilla.nota,
         conCeladora: grilla.conCeladora,
+        celadoraHaceTrasbordo: Boolean(grilla.celadoraHaceTrasbordo),
         salidaDeBase: Boolean(grilla.salidaDeBase),
         retornoABase: Boolean(grilla.retornoABase),
         transporte: grilla.transporte,
@@ -743,7 +745,7 @@ export function AdministracionGrillasManager({
             </div>
           </div>
           <div className="form-group" style={{ maxWidth: 320 }}>
-            <label htmlFor="g-area-hist">Área</label>
+            <label htmlFor="g-area-hist">Zona</label>
             <select
               id="g-area-hist"
               value={areaId}
@@ -759,7 +761,7 @@ export function AdministracionGrillasManager({
               ))}
             </select>
           </div>
-          {renderListaDetalle(grillasVisibles, 'Todavía no hay grillas finalizadas en esta área.')}
+          {renderListaDetalle(grillasVisibles, 'Todavía no hay grillas finalizadas en esta zona.')}
         </section>
         {renderPreview()}
       </div>
@@ -790,7 +792,7 @@ export function AdministracionGrillasManager({
     <div className="adm-grillas">
       {popup.popupNode}
       <div className="admin-tabs-shell">
-        <div className="admin-tabs" role="tablist" aria-label="Áreas">
+        <div className="admin-tabs" role="tablist" aria-label="Zonas">
           {areas.map((a) => (
             <button
               key={a.id}

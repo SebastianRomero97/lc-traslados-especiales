@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdministracionApi } from '@/lib/administracion-auth';
 
-/** Opciones para armar una grilla según el área seleccionada */
+type ZonaMeta = { zonaId: string; zonaNombre: string; esZonaActual: boolean };
+
+/** Opciones para armar una grilla: zona activa + recursos de otras zonas (etiquetados). */
 export async function GET(request: Request) {
   const auth = await requireAdministracionApi();
   if ('error' in auth) return auth.error;
@@ -12,8 +14,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: 'Indicá areaId.' }, { status: 400 });
   }
 
-  const area = await prisma.area.findUnique({
-    where: { id: areaId },
+  const areas = await prisma.area.findMany({
+    where: { active: true },
+    orderBy: { nombre: 'asc' },
     include: {
       transportes: {
         include: {
@@ -41,6 +44,11 @@ export async function GET(request: Request) {
           user: { select: { id: true, username: true, active: true } },
         },
       },
+      choferes: {
+        include: {
+          user: { select: { id: true, username: true, active: true, transporteId: true } },
+        },
+      },
       pasajeros: {
         include: {
           pasajero: {
@@ -66,50 +74,154 @@ export async function GET(request: Request) {
           lat: true,
           lon: true,
           usarCoordsParaChofer: true,
+          color: true,
         },
         orderBy: { nombre: 'asc' },
       },
     },
   });
 
-  if (!area) {
-    return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+  const current = areas.find((a) => a.id === areaId);
+  if (!current) {
+    return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
   }
 
-  const choferes = await prisma.user.findMany({
+  const zonaMeta = (zonaId: string, zonaNombre: string): ZonaMeta => ({
+    zonaId,
+    zonaNombre,
+    esZonaActual: zonaId === areaId,
+  });
+
+  type TransporteOut = {
+    id: string;
+    nombre: string;
+    tipo: string;
+    choferes: { id: string; username: string }[];
+    celadoras: { id: string; username: string }[];
+  } & ZonaMeta;
+
+  type PersonaOut = { id: string; username: string; transporteId?: string | null } & ZonaMeta;
+  type PasajeroOut = {
+    id: string;
+    nombre: string;
+    direccion: string;
+    lat?: number | null;
+    lon?: number | null;
+    usarCoordsParaChofer?: boolean;
+    destinoIds: string[];
+    destinoId: string | null;
+  } & ZonaMeta;
+  type DestinoOut = {
+    id: string;
+    nombre: string;
+    domicilio: string;
+    lat?: number | null;
+    lon?: number | null;
+    usarCoordsParaChofer?: boolean;
+    color?: string | null;
+  } & ZonaMeta;
+
+  const transportesById = new Map<string, TransporteOut>();
+  const celadorasById = new Map<string, PersonaOut>();
+  const choferesById = new Map<string, PersonaOut>();
+  const pasajerosById = new Map<string, PasajeroOut>();
+  const destinosById = new Map<string, DestinoOut>();
+
+  const preferCurrent = <T extends ZonaMeta>(map: Map<string, T>, id: string, item: T) => {
+    const prev = map.get(id);
+    if (!prev || (!prev.esZonaActual && item.esZonaActual)) {
+      map.set(id, item);
+    }
+  };
+
+  // Zona actual primero, luego el resto (así preferCurrent deja la etiqueta correcta).
+  const ordered = [current, ...areas.filter((a) => a.id !== areaId)];
+
+  for (const area of ordered) {
+    const meta = zonaMeta(area.id, area.nombre);
+
+    for (const link of area.transportes) {
+      const t = link.transporte;
+      if (!t.active) continue;
+      preferCurrent(transportesById, t.id, {
+        id: t.id,
+        nombre: t.nombre,
+        tipo: t.tipo,
+        choferes: t.choferes,
+        celadoras: t.celadoras.filter((c) => c.user.active).map((c) => c.user),
+        ...meta,
+      });
+    }
+
+    for (const link of area.celadoras) {
+      if (!link.user.active) continue;
+      preferCurrent(celadorasById, link.user.id, {
+        id: link.user.id,
+        username: link.user.username,
+        ...meta,
+      });
+    }
+
+    for (const link of area.choferes) {
+      if (!link.user.active) continue;
+      preferCurrent(choferesById, link.user.id, {
+        id: link.user.id,
+        username: link.user.username,
+        transporteId: link.user.transporteId,
+        ...meta,
+      });
+    }
+
+    for (const link of area.pasajeros) {
+      if (!link.pasajero.active) continue;
+      preferCurrent(pasajerosById, link.pasajero.id, {
+        ...link.pasajero,
+        destinoIds: link.destinos.map((d) => d.destinoId),
+        destinoId: link.destinos[0]?.destinoId ?? null,
+        ...meta,
+      });
+    }
+
+    for (const d of area.destinos) {
+      preferCurrent(destinosById, d.id, { ...d, ...meta });
+    }
+  }
+
+  // Choferes activos sin zona (solo vehículo): complementan el pool.
+  const choferesSueltos = await prisma.user.findMany({
     where: { roles: { has: 'CHOFER' }, active: true },
     select: { id: true, username: true, transporteId: true },
     orderBy: { username: 'asc' },
   });
+  for (const c of choferesSueltos) {
+    if (choferesById.has(c.id)) continue;
+    choferesById.set(c.id, {
+      id: c.id,
+      username: c.username,
+      transporteId: c.transporteId,
+      zonaId: areaId,
+      zonaNombre: 'Sin zona',
+      esZonaActual: false,
+    });
+  }
+
+  const sortActualFirst = <T extends ZonaMeta & { nombre?: string; username?: string }>(
+    list: T[],
+  ) =>
+    list.sort((a, b) => {
+      if (a.esZonaActual !== b.esZonaActual) return a.esZonaActual ? -1 : 1;
+      const an = (a.nombre ?? a.username ?? '').localeCompare(b.nombre ?? b.username ?? '', 'es');
+      return an;
+    });
 
   return NextResponse.json({
     data: {
-      area: { id: area.id, nombre: area.nombre },
-      transportes: area.transportes
-        .map((t) => t.transporte)
-        .filter((t) => t.active)
-        .map((t) => ({
-          id: t.id,
-          nombre: t.nombre,
-          tipo: t.tipo,
-          choferes: t.choferes,
-          celadoras: t.celadoras
-            .filter((c) => c.user.active)
-            .map((c) => c.user),
-        })),
-      celadoras: area.celadoras
-        .filter((c) => c.user.active)
-        .map((c) => c.user),
-      pasajeros: area.pasajeros
-        .filter((p) => p.pasajero.active)
-        .map((p) => ({
-          ...p.pasajero,
-          destinoIds: p.destinos.map((d) => d.destinoId),
-          /** Compat: primer destino (UI vieja de grillas). */
-          destinoId: p.destinos[0]?.destinoId ?? null,
-        })),
-      destinos: area.destinos,
-      choferes,
+      area: { id: current.id, nombre: current.nombre },
+      transportes: sortActualFirst([...transportesById.values()]),
+      celadoras: sortActualFirst([...celadorasById.values()]),
+      pasajeros: sortActualFirst([...pasajerosById.values()]),
+      destinos: sortActualFirst([...destinosById.values()]),
+      choferes: sortActualFirst([...choferesById.values()]),
     },
   });
 }

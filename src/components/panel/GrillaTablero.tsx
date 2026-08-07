@@ -45,8 +45,7 @@ type DragPayload =
   | { kind: 'chofer'; id: string }
   | { kind: 'celadora'; id: string }
   | { kind: 'pasajero'; id: string }
-  | { kind: 'destino'; id: string }
-  | { kind: 'fila'; clientId: string };
+  | { kind: 'destino'; id: string };
 
 type FilaBoard = {
   clientId: string;
@@ -72,8 +71,17 @@ export type GrillaTableroOptions = {
     tipo: string;
     choferes: { id: string; username: string }[];
     celadoras: { id: string; username: string }[];
+    zonaId?: string;
+    zonaNombre?: string;
+    esZonaActual?: boolean;
   }[];
-  celadoras: { id: string; username: string }[];
+  celadoras: {
+    id: string;
+    username: string;
+    zonaId?: string;
+    zonaNombre?: string;
+    esZonaActual?: boolean;
+  }[];
   pasajeros: {
     id: string;
     nombre: string;
@@ -83,6 +91,9 @@ export type GrillaTableroOptions = {
     usarCoordsParaChofer?: boolean;
     destinoIds?: string[];
     destinoId?: string | null;
+    zonaId?: string;
+    zonaNombre?: string;
+    esZonaActual?: boolean;
   }[];
   destinos: {
     id: string;
@@ -91,8 +102,19 @@ export type GrillaTableroOptions = {
     lat?: number | null;
     lon?: number | null;
     usarCoordsParaChofer?: boolean;
+    color?: string | null;
+    zonaId?: string;
+    zonaNombre?: string;
+    esZonaActual?: boolean;
   }[];
-  choferes: { id: string; username: string; transporteId: string | null }[];
+  choferes: {
+    id: string;
+    username: string;
+    transporteId: string | null;
+    zonaId?: string;
+    zonaNombre?: string;
+    esZonaActual?: boolean;
+  }[];
 };
 
 export type GrillaTableroInitial = {
@@ -106,6 +128,7 @@ export type GrillaTableroInitial = {
   /** ISO timestamp para locking optimista al guardar. */
   updatedAt?: string;
   conCeladora: boolean;
+  celadoraHaceTrasbordo?: boolean;
   salidaDeBase?: boolean;
   retornoABase?: boolean;
   transporte: { id: string; nombre: string; tipo: string };
@@ -220,6 +243,9 @@ export function GrillaTablero({
   const [transporteId, setTransporteId] = useState(initial?.transporte.id ?? '');
   const [choferId, setChoferId] = useState(initial?.chofer.id ?? '');
   const [celadoraId, setCeladoraId] = useState(initial?.celadora?.id ?? '');
+  const [celadoraHaceTrasbordo, setCeladoraHaceTrasbordo] = useState(
+    Boolean(initial?.celadoraHaceTrasbordo),
+  );
   const [puntoEncuentroId, setPuntoEncuentroId] = useState(
     initial?.puntoEncuentro?.id ?? '',
   );
@@ -274,7 +300,8 @@ export function GrillaTablero({
     initial?.updatedAt ?? null,
   );
 
-  const [recursoAbierto, setRecursoAbierto] = useState<RecursoTipo | null>('vehiculos');
+  const [recursoAbierto, setRecursoAbierto] = useState<RecursoTipo | null>(null);
+  const [recursoSearch, setRecursoSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [draggingKind, setDraggingKind] = useState<DragPayload['kind'] | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -283,7 +310,105 @@ export function GrillaTablero({
   >(null);
   const [optimizarToken, setOptimizarToken] = useState(0);
   const [filasAntesOptimizar, setFilasAntesOptimizar] = useState<FilaBoard[] | null>(null);
-  const allowFilaDragRef = useRef(false);
+  /** Reorden de filas con pointer (no HTML5): así Chrome permite la rueda. */
+  const [reorderDragId, setReorderDragId] = useState<string | null>(null);
+  const paradasListRef = useRef<HTMLDivElement>(null);
+  const reorderDragIdRef = useRef<string | null>(null);
+  const filasAntesReorderRef = useRef<FilaBoard[] | null>(null);
+  const lastPointerYRef = useRef(0);
+  const reorderRafRef = useRef(0);
+  reorderDragIdRef.current = reorderDragId;
+
+  /** Índice de destino según la Y del pointer (punto medio de cada fila). */
+  const targetIndexFromY = (clientY: number): number => {
+    const list = paradasListRef.current;
+    if (!list) return -1;
+    const rows = list.querySelectorAll<HTMLElement>('[data-fila-id]');
+    if (rows.length === 0) return -1;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) return i;
+    }
+    return rows.length - 1;
+  };
+
+  /** Reordena en vivo (estilo Maps): la fila semitransparente “viaja” en la lista. */
+  const applyLiveReorder = (clientY: number) => {
+    const dragId = reorderDragIdRef.current;
+    if (!dragId) return;
+    const toIndex = targetIndexFromY(clientY);
+    if (toIndex < 0) return;
+    setFilas((prev) => {
+      const fromIndex = prev.findIndex((f) => f.clientId === dragId);
+      if (fromIndex < 0 || fromIndex === toIndex) return prev;
+      const next = [...prev];
+      const [item] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, item);
+      return next;
+    });
+  };
+
+  const scheduleLiveReorder = (clientY: number) => {
+    lastPointerYRef.current = clientY;
+    if (reorderRafRef.current) cancelAnimationFrame(reorderRafRef.current);
+    reorderRafRef.current = requestAnimationFrame(() => {
+      reorderRafRef.current = 0;
+      applyLiveReorder(lastPointerYRef.current);
+    });
+  };
+
+  /** Mientras reordenás: pointer acomoda en vivo; rueda scrollea el listado. */
+  useEffect(() => {
+    if (!reorderDragId) return;
+
+    const onMove = (e: PointerEvent) => {
+      scheduleLiveReorder(e.clientY);
+    };
+
+    const finish = () => {
+      if (reorderRafRef.current) cancelAnimationFrame(reorderRafRef.current);
+      reorderRafRef.current = 0;
+      filasAntesReorderRef.current = null;
+      setReorderDragId(null);
+    };
+
+    const onCancel = () => {
+      if (reorderRafRef.current) cancelAnimationFrame(reorderRafRef.current);
+      reorderRafRef.current = 0;
+      const snapshot = filasAntesReorderRef.current;
+      if (snapshot) setFilas(snapshot.map((f) => ({ ...f })));
+      filasAntesReorderRef.current = null;
+      setReorderDragId(null);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      const el = paradasListRef.current;
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.scrollTop += e.deltaY;
+      scheduleLiveReorder(lastPointerYRef.current);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('wheel', onWheel, { passive: false, capture: true });
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('wheel', onWheel, { capture: true });
+      window.removeEventListener('keydown', onKey);
+      if (reorderRafRef.current) cancelAnimationFrame(reorderRafRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reorderDragId]);
 
   const transporte = useMemo(
     () => options.transportes.find((t) => t.id === transporteId) ?? null,
@@ -414,6 +539,7 @@ export function GrillaTablero({
       setPuntosEncuentro([]);
       setPuntoMode('ninguno');
       setPuntoEncuentroId('');
+      setCeladoraHaceTrasbordo(false);
       return;
     }
     let cancelled = false;
@@ -442,7 +568,17 @@ export function GrillaTablero({
   }, [celadoraId]);
 
   const toggleRecurso = (tipo: RecursoTipo) => {
-    setRecursoAbierto((current) => (current === tipo ? null : tipo));
+    setRecursoAbierto((current) => {
+      const next = current === tipo ? null : tipo;
+      setRecursoSearch('');
+      return next;
+    });
+  };
+
+  const matchRecursoName = (nombre: string) => {
+    const q = recursoSearch.trim().toLowerCase();
+    if (!q) return true;
+    return nombre.toLowerCase().includes(q);
   };
 
   const assignVehiculo = (id: string) => {
@@ -604,17 +740,6 @@ export function GrillaTablero({
     setDraggingKind(null);
   };
 
-  const reorderFila = (fromClientId: string, toIndex: number) => {
-    setFilas((prev) => {
-      const fromIndex = prev.findIndex((f) => f.clientId === fromClientId);
-      if (fromIndex < 0 || fromIndex === toIndex) return prev;
-      const next = [...prev];
-      const [item] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, item);
-      return next;
-    });
-  };
-
   const validate = (): string | null => {
     const headerMissing = missingFieldsMessage(
       {
@@ -627,7 +752,7 @@ export function GrillaTablero({
       },
       {
         nombre: 'nombre de la grilla',
-        areaId: 'área',
+        areaId: 'zona',
         tipoItinerario: 'tipo de itinerario',
         fecha: 'fecha',
         transporteId: 'vehículo',
@@ -653,6 +778,9 @@ export function GrillaTablero({
       }
       if (!fila.direccion.trim() || !fila.pasajeroNombre.trim()) {
         return `Completá dirección y detalle (fila ${n}).`;
+      }
+      if (fila.accion === 'TRASBORDO' && !fila.trasbordoHacia.trim()) {
+        return `Indicá a qué vehículo hace trasbordo (fila ${n}).`;
       }
     }
     return null;
@@ -830,6 +958,7 @@ export function GrillaTablero({
         transporteId,
         choferId,
         conCeladora: Boolean(celadoraId),
+        celadoraHaceTrasbordo: Boolean(celadoraId) && celadoraHaceTrasbordo,
         celadoraId: celadoraId || null,
         puntoEncuentroId: resolvedPunto,
         salidaDeBase,
@@ -885,7 +1014,7 @@ export function GrillaTablero({
           title: 'Recurso ya asignado',
           message:
             conflictBody.message ??
-            'Este recurso ya está asignado en otra área. ¿Desea reasignarlo aquí?',
+            'Este recurso ya está asignado en otra zona. ¿Desea reasignarlo aquí?',
           confirmLabel: 'Sí, reasignar',
           cancelLabel: 'Cancelar',
         });
@@ -934,7 +1063,7 @@ export function GrillaTablero({
 
   const cargarSalidaDesdeIngreso = async () => {
     if (!areaId || !fecha) {
-      popup.error('Elegí área y fecha antes de cargar desde Ingresos.');
+      popup.error('Elegí zona y fecha antes de cargar desde Ingresos.');
       return;
     }
     setSubmitting(true);
@@ -954,6 +1083,7 @@ export function GrillaTablero({
             fecha: string;
             nota: string | null;
             conCeladora: boolean;
+            celadoraHaceTrasbordo?: boolean;
             transporteId: string;
             choferId: string;
             celadoraId: string | null;
@@ -979,6 +1109,7 @@ export function GrillaTablero({
       setTransporteId(s.transporteId);
       setChoferId(s.choferId);
       setCeladoraId(s.celadoraId ?? '');
+      setCeladoraHaceTrasbordo(Boolean(s.celadoraHaceTrasbordo));
       setPuntoMode('ninguno');
       setPuntoEncuentroId('');
       setFilas(
@@ -1014,14 +1145,27 @@ export function GrillaTablero({
     { key: 'destinos', label: 'Destinos', count: options.destinos.length },
   ];
 
+  const recursoZonaBadge = (zonaNombre?: string, esZonaActual?: boolean) => {
+    if (!zonaNombre) return null;
+    return (
+      <small
+        className={`grilla-recurso-card__zona${esZonaActual ? ' is-actual' : ' is-otra'}`}
+      >
+        {zonaNombre}
+      </small>
+    );
+  };
+
   const renderRecursoCards = (section: RecursoTipo) => {
     if (section === 'vehiculos') {
-      return options.transportes.map((t) => {
+      return options.transportes.filter((t) => matchRecursoName(t.nombre)).map((t) => {
         const used = t.id === transporteId;
         return (
           <div
             key={t.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}`}
+            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+              t.esZonaActual === false ? ' is-otra-zona' : ''
+            }`}
             draggable={!used}
             onDragStart={(e) => {
               if (used) {
@@ -1035,17 +1179,20 @@ export function GrillaTablero({
           >
             <strong>{t.nombre}</strong>
             <small>{t.tipo}</small>
+            {recursoZonaBadge(t.zonaNombre, t.esZonaActual)}
           </div>
         );
       });
     }
     if (section === 'choferes') {
-      return options.choferes.map((c) => {
+      return options.choferes.filter((c) => matchRecursoName(c.username)).map((c) => {
         const used = c.id === choferId;
         return (
           <div
             key={c.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}`}
+            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+              c.esZonaActual === false ? ' is-otra-zona' : ''
+            }`}
             draggable={!used}
             onDragStart={(e) => {
               if (used) {
@@ -1058,17 +1205,20 @@ export function GrillaTablero({
             onDragEnd={() => setDraggingKind(null)}
           >
             <strong>{c.username}</strong>
+            {recursoZonaBadge(c.zonaNombre, c.esZonaActual)}
           </div>
         );
       });
     }
     if (section === 'celadoras') {
-      return options.celadoras.map((c) => {
+      return options.celadoras.filter((c) => matchRecursoName(c.username)).map((c) => {
         const used = c.id === celadoraId;
         return (
           <div
             key={c.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}`}
+            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+              c.esZonaActual === false ? ' is-otra-zona' : ''
+            }`}
             draggable={!used}
             onDragStart={(e) => {
               if (used) {
@@ -1081,17 +1231,20 @@ export function GrillaTablero({
             onDragEnd={() => setDraggingKind(null)}
           >
             <strong>{c.username}</strong>
+            {recursoZonaBadge(c.zonaNombre, c.esZonaActual)}
           </div>
         );
       });
     }
     if (section === 'pasajeros') {
-      return options.pasajeros.map((p) => {
+      return options.pasajeros.filter((p) => matchRecursoName(p.nombre)).map((p) => {
         const used = usedPasajeroIds.has(p.id);
         return (
           <div
             key={p.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}`}
+            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+              p.esZonaActual === false ? ' is-otra-zona' : ''
+            }`}
             draggable={!used}
             onDragStart={(e) => {
               if (used) {
@@ -1105,14 +1258,15 @@ export function GrillaTablero({
           >
             <strong>{p.nombre}</strong>
             <small>{p.direccion}</small>
+            {recursoZonaBadge(p.zonaNombre, p.esZonaActual)}
           </div>
         );
       });
     }
-    return options.destinos.map((d) => (
+    return options.destinos.filter((d) => matchRecursoName(d.nombre)).map((d) => (
       <div
         key={d.id}
-        className="grilla-recurso-card"
+        className={`grilla-recurso-card${d.esZonaActual === false ? ' is-otra-zona' : ''}`}
         draggable
         onDragStart={(e) => {
           setDragPayload(e, { kind: 'destino', id: d.id });
@@ -1122,6 +1276,7 @@ export function GrillaTablero({
       >
         <strong>{d.nombre}</strong>
         <small>{d.domicilio}</small>
+        {recursoZonaBadge(d.zonaNombre, d.esZonaActual)}
       </div>
     ));
   };
@@ -1132,8 +1287,8 @@ export function GrillaTablero({
         <div>
           <h2>{isNew ? 'Nueva grilla' : 'Editar grilla'}</h2>
           <p className="panel-card__desc">
-            Arrastrá recursos desde la izquierda hacia la grilla. El orden de las paradas es el del
-            arrastre; después podés reordenarlas.
+            Arrastrá recursos desde la izquierda hacia la grilla (incluye otras zonas, etiquetadas).
+            El orden de las paradas es el del arrastre; después podés reordenarlas.
           </p>
         </div>
         <div className="grilla-tablero__header-actions">
@@ -1280,10 +1435,32 @@ export function GrillaTablero({
               </button>
               {recursoAbierto === section.key && (
                 <div className="grilla-recurso-acc__body">
-                  {renderRecursoCards(section.key)}
-                  {section.count === 0 && (
-                    <p className="grilla-tablero__empty">No hay recursos de este tipo en el área.</p>
-                  )}
+                  <input
+                    type="search"
+                    className="recursos-acc-search"
+                    placeholder={`Buscar ${section.label.toLowerCase()}…`}
+                    value={recursoSearch}
+                    onChange={(e) => setRecursoSearch(e.target.value)}
+                    aria-label={`Buscar ${section.label}`}
+                  />
+                  {(() => {
+                    const cards = renderRecursoCards(section.key);
+                    return (
+                      <>
+                        {cards}
+                        {section.count === 0 && (
+                          <p className="grilla-tablero__empty">
+                            No hay recursos de este tipo en la zona.
+                          </p>
+                        )}
+                        {section.count > 0 &&
+                          Boolean(recursoSearch.trim()) &&
+                          cards.length === 0 && (
+                            <p className="grilla-tablero__empty">Sin resultados para esa búsqueda.</p>
+                          )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -1374,6 +1551,7 @@ export function GrillaTablero({
                       aria-label="Quitar celadora"
                       onClick={() => {
                         setCeladoraId('');
+                        setCeladoraHaceTrasbordo(false);
                         setPuntoMode('ninguno');
                         setPuntoEncuentroId('');
                       }}
@@ -1389,6 +1567,21 @@ export function GrillaTablero({
 
             {celadoraId && (
               <div className="grilla-punto">
+                <div className="form-group grilla-celadora-trasbordo">
+                  <label className="grilla-check-label" htmlFor="tb-celadora-trasbordo">
+                    <input
+                      id="tb-celadora-trasbordo"
+                      type="checkbox"
+                      checked={celadoraHaceTrasbordo}
+                      onChange={(e) => setCeladoraHaceTrasbordo(e.target.checked)}
+                    />
+                    Celadora hace trasbordo
+                  </label>
+                  <p className="grilla-tablero__hint" style={{ margin: '0.25rem 0 0' }}>
+                    Marcá esto si esta celadora también figura en otra grilla del mismo día e
+                    itinerario (Ingreso / Adaptación / Salida).
+                  </p>
+                </div>
                 <div className="form-group">
                   <label htmlFor="tb-punto-mode">Punto de encuentro</label>
                   <select
@@ -1470,11 +1663,7 @@ export function GrillaTablero({
               slotHover === 'paradas' ? ' is-drop-target' : ''
             }`}
             onDragOver={(e) => {
-              if (
-                draggingKind === 'pasajero' ||
-                draggingKind === 'destino' ||
-                draggingKind === 'fila'
-              ) {
+              if (draggingKind === 'pasajero' || draggingKind === 'destino') {
                 e.preventDefault();
                 setSlotHover('paradas');
               }
@@ -1484,38 +1673,31 @@ export function GrillaTablero({
           >
             <h3>Paradas</h3>
             <p className="grilla-tablero__hint">
-              Arrastrá pasajeros o destinos acá. Reordená con el asa ∷.
+              Arrastrá pasajeros o destinos acá. Reordená con el asa ∷ (se acomoda en vivo;
+              rueda = scroll). Esc cancela.
             </p>
 
             {filas.length === 0 ? (
               <p className="grilla-tablero__empty">Todavía no hay paradas en esta grilla.</p>
             ) : (
-              filas.map((fila, index) => (
+              <div
+                ref={paradasListRef}
+                className={`grilla-paradas-list${reorderDragId ? ' is-reordering' : ''}`}
+              >
+              {filas.map((fila, index) => (
                 <div
                   key={fila.clientId}
+                  data-fila-id={fila.clientId}
                   className={[
                     'grilla-fila',
                     'grilla-fila--board',
                     dropTargetId === fila.clientId ? 'is-drop-target' : '',
+                    reorderDragId === fila.clientId ? 'is-dragging' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  draggable={filas.length > 1}
-                  onDragStart={(e) => {
-                    if (!allowFilaDragRef.current) {
-                      e.preventDefault();
-                      return;
-                    }
-                    setDragPayload(e, { kind: 'fila', clientId: fila.clientId });
-                    setDraggingKind('fila');
-                  }}
-                  onDragEnd={() => {
-                    setDraggingKind(null);
-                    setDropTargetId(null);
-                    allowFilaDragRef.current = false;
-                  }}
                   onDragOver={(e) => {
-                    if (draggingKind === 'fila') {
+                    if (draggingKind === 'pasajero' || draggingKind === 'destino') {
                       e.preventDefault();
                       setDropTargetId(fila.clientId);
                     }
@@ -1529,9 +1711,7 @@ export function GrillaTablero({
                     const payload = readDragPayload(e);
                     setDropTargetId(null);
                     setSlotHover(null);
-                    if (payload?.kind === 'fila') {
-                      reorderFila(payload.clientId, index);
-                    } else if (payload?.kind === 'pasajero') {
+                    if (payload?.kind === 'pasajero') {
                       addPasajeroFila(payload.id);
                     } else if (payload?.kind === 'destino') {
                       addDestinoFila(payload.id);
@@ -1543,10 +1723,15 @@ export function GrillaTablero({
                     className="grilla-fila__handle"
                     role="button"
                     tabIndex={filas.length > 1 ? 0 : -1}
-                    title="Arrastra para cambiar el orden"
+                    title="Arrastrá para reordenar (rueda = scroll, Esc = cancelar)"
                     aria-label={`Arrastrar fila ${index + 1}`}
-                    onPointerDown={() => {
-                      allowFilaDragRef.current = filas.length > 1;
+                    aria-disabled={filas.length <= 1}
+                    onPointerDown={(e) => {
+                      if (filas.length <= 1 || e.button !== 0) return;
+                      e.preventDefault();
+                      lastPointerYRef.current = e.clientY;
+                      filasAntesReorderRef.current = filas.map((f) => ({ ...f }));
+                      setReorderDragId(fila.clientId);
                     }}
                   >
                     <span className="grilla-fila__handle-icon" aria-hidden="true" />
@@ -1658,6 +1843,24 @@ export function GrillaTablero({
                     </select>
                   </div>
 
+                  {fila.accion === 'TRASBORDO' && (
+                    <div className="form-group grilla-fila__trasbordo">
+                      <label>Trasbordo hacia</label>
+                      <input
+                        value={fila.trasbordoHacia}
+                        onChange={(e) =>
+                          setFilas((prev) =>
+                            prev.map((f, i) =>
+                              i === index ? { ...f, trasbordoHacia: e.target.value } : f,
+                            ),
+                          )
+                        }
+                        placeholder="Nombre del otro vehículo"
+                        required
+                      />
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     className="btn btn--danger btn--sm grilla-fila__quitar"
@@ -1668,7 +1871,8 @@ export function GrillaTablero({
                     Quitar
                   </button>
                 </div>
-              ))
+              ))}
+              </div>
             )}
           </div>
         </div>

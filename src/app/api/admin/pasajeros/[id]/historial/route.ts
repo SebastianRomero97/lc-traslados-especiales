@@ -197,7 +197,7 @@ export async function GET(_request: Request, { params }: Params) {
         : null,
     }));
 
-    /** Solo vehículos donde el pasajero figuró en una grilla (no todos los del área). */
+    /** Solo vehículos donde el pasajero figuró en una grilla (no todos los de la zona). */
     const transportesMap = new Map<
       string,
       {

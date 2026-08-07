@@ -25,7 +25,7 @@ export async function GET() {
   return NextResponse.json({ data: areas });
 }
 
-/** Alta de áreas: solo Admin (usar /api/admin/areas). */
+/** Alta de zonas: solo Admin (usar /api/admin/areas). */
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
   if ('error' in auth) return auth.error;
@@ -35,21 +35,21 @@ export async function POST(request: Request) {
     const nombre = body.nombre?.trim();
 
     if (!nombre) {
-      return NextResponse.json({ message: 'Indicá el nombre del área.' }, { status: 400 });
+      return NextResponse.json({ message: 'Indicá el nombre de la zona.' }, { status: 400 });
     }
 
     const existing = await prisma.area.findUnique({ where: { nombre } });
     if (existing) {
-      return NextResponse.json({ message: 'Ya existe un área con ese nombre.' }, { status: 409 });
+      return NextResponse.json({ message: 'Ya existe una zona con ese nombre.' }, { status: 409 });
     }
 
     const area = await prisma.area.create({
       data: { nombre, active: true },
     });
 
-    return NextResponse.json({ data: area, message: 'Área creada.' }, { status: 201 });
+    return NextResponse.json({ data: area, message: 'Zona creada.' }, { status: 201 });
   } catch (error) {
     console.error('[API /administracion/areas POST]', error);
-    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos crear el área.') }, { status: 500 });
+    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos crear la zona.') }, { status: 500 });
   }
 }

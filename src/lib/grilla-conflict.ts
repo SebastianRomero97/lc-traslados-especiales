@@ -23,10 +23,18 @@ type ConflictInput = {
   transporteId: string;
   choferId: string;
   celadoraId?: string | null;
+  /** Permite celadora en dos grillas del mismo día/modalidad. */
+  celadoraHaceTrasbordo?: boolean;
   pasajeroIds: string[];
 };
 
-const KINDS_NO_AUTO: ResourceConflict['kind'][] = ['vehiculo', 'chofer', 'prestador'];
+/** Vehículo, chofer y celadora (sin trasbordo) no se pueden forzar. */
+const KINDS_NO_AUTO: ResourceConflict['kind'][] = [
+  'vehiculo',
+  'chofer',
+  'prestador',
+  'celadora',
+];
 
 export async function findResourceConflicts(
   db: Db,
@@ -58,6 +66,7 @@ export async function findResourceConflicts(
       choferId: true,
       chofer: { select: { id: true, username: true, isPrestador: true } },
       celadoraId: true,
+      celadoraHaceTrasbordo: true,
       celadora: { select: { id: true, username: true } },
       filas: {
         where: { pasajeroId: { not: null } },
@@ -106,16 +115,21 @@ export async function findResourceConflicts(
       });
     }
     if (input.celadoraId && g.celadoraId === input.celadoraId && g.celadora) {
-      push({
-        kind: 'celadora',
-        resourceId: g.celadoraId,
-        resourceLabel: g.celadora.username,
-        areaId: g.area.id,
-        areaNombre: g.area.nombre,
-        grillaId: g.id,
-        grillaNombre: g.nombre,
-        estado: g.estado as EstadoGrilla,
-      });
+      // Solo se permite en dos grillas si alguna declara “Celadora hace trasbordo”.
+      const permitidaPorTrasbordo =
+        Boolean(input.celadoraHaceTrasbordo) || Boolean(g.celadoraHaceTrasbordo);
+      if (!permitidaPorTrasbordo) {
+        push({
+          kind: 'celadora',
+          resourceId: g.celadoraId,
+          resourceLabel: g.celadora.username,
+          areaId: g.area.id,
+          areaNombre: g.area.nombre,
+          grillaId: g.id,
+          grillaNombre: g.nombre,
+          estado: g.estado as EstadoGrilla,
+        });
+      }
     }
     for (const fila of g.filas) {
       if (!fila.pasajeroId || !input.pasajeroIds.includes(fila.pasajeroId)) continue;
@@ -135,7 +149,7 @@ export async function findResourceConflicts(
   return conflicts;
 }
 
-/** Conflictos que no se pueden resolver con force (bloqueo operativo o chofer/vehículo). */
+/** Conflictos que no se pueden resolver con force (bloqueo operativo o chofer/vehículo/celadora). */
 export function conflictsNotAutoResolvable(conflicts: ResourceConflict[]): ResourceConflict[] {
   return conflicts.filter(
     (c) =>
@@ -144,7 +158,7 @@ export function conflictsNotAutoResolvable(conflicts: ResourceConflict[]): Resou
   );
 }
 
-/** Solo limpia celadora / filas de pasajeros en grillas no bloqueadas. */
+/** Solo limpia filas de pasajeros en grillas no bloqueadas (celadora ya no se fuerza). */
 export async function applyForceReassign(db: Db, conflicts: ResourceConflict[]): Promise<void> {
   const byGrilla = new Map<string, ResourceConflict[]>();
   for (const c of conflicts) {
@@ -156,15 +170,8 @@ export async function applyForceReassign(db: Db, conflicts: ResourceConflict[]):
   }
 
   for (const [grillaId, list] of byGrilla) {
-    const hasCeladora = list.some((c) => c.kind === 'celadora');
     const pasajeroIds = list.filter((c) => c.kind === 'pasajero').map((c) => c.resourceId);
 
-    if (hasCeladora) {
-      await db.grilla.update({
-        where: { id: grillaId },
-        data: { celadoraId: null, puntoEncuentroId: null },
-      });
-    }
     if (pasajeroIds.length > 0) {
       await db.grillaFila.deleteMany({
         where: { grillaId, pasajeroId: { in: pasajeroIds } },
@@ -186,7 +193,7 @@ export function conflictsResponseBody(
   if (blocked.some((c) => c.estado === 'EN_CURSO')) {
     message = `${message} Esa grilla ya está en curso y no se puede reasignar.`;
   } else if (blocked.some((c) => KINDS_NO_AUTO.includes(c.kind))) {
-    message = `${message} Chofer/vehículo no se reasignan solos: editá o eliminá la otra grilla primero.`;
+    message = `${message} Vehículo, chofer o celadora (sin trasbordo) no se reasignan solos: editá o eliminá la otra grilla primero.`;
   }
 
   return {

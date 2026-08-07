@@ -78,7 +78,7 @@ export function GrillaResumenPanel({ grilla }: { grilla: GrillaResumenData }) {
     <div className="grilla-resumen">
       <div className="grilla-resumen__meta">
         <span>
-          <strong>Área:</strong> {grilla.area.nombre}
+          <strong>Zona:</strong> {grilla.area.nombre}
         </span>
         <span>
           <strong>Fecha:</strong> {formatFechaGrilla(grilla.fecha)}

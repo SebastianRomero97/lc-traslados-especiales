@@ -15,7 +15,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const body = (await request.json()) as { nombre?: string; active?: boolean };
     const existing = await prisma.area.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+      return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
     const data: { nombre?: string; active?: boolean } = {};
@@ -25,16 +25,16 @@ export async function PATCH(request: Request, { params }: Params) {
     if (data.nombre && data.nombre !== existing.nombre) {
       const clash = await prisma.area.findUnique({ where: { nombre: data.nombre } });
       if (clash) {
-        return NextResponse.json({ message: 'Ya existe un área con ese nombre.' }, { status: 409 });
+        return NextResponse.json({ message: 'Ya existe una zona con ese nombre.' }, { status: 409 });
       }
     }
 
     const area = await prisma.area.update({ where: { id }, data });
-    return NextResponse.json({ data: area, message: 'Área actualizada.' });
+    return NextResponse.json({ data: area, message: 'Zona actualizada.' });
   } catch (error) {
     console.error('[API /admin/areas PATCH]', error);
     return NextResponse.json(
-      { message: describeCaughtError(error, 'No pudimos actualizar el área.') },
+      { message: describeCaughtError(error, 'No pudimos actualizar la zona.') },
       { status: 500 },
     );
   }
@@ -49,15 +49,15 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     const existing = await prisma.area.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+      return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
     await prisma.area.delete({ where: { id } });
-    return NextResponse.json({ message: 'Área eliminada.' });
+    return NextResponse.json({ message: 'Zona eliminada.' });
   } catch (error) {
     console.error('[API /admin/areas DELETE]', error);
     return NextResponse.json(
-      { message: describeCaughtError(error, 'No pudimos eliminar el área.') },
+      { message: describeCaughtError(error, 'No pudimos eliminar la zona.') },
       { status: 500 },
     );
   }

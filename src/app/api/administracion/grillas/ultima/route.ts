@@ -17,7 +17,7 @@ const grillaInclude = {
   },
 };
 
-/** Última grilla similar (área + transporte + tipo) para reutilizar como base */
+/** Última grilla similar (zona + transporte + tipo) para reutilizar como base */
 export async function GET(request: Request) {
   const auth = await requireAdministracionApi();
   if ('error' in auth) return auth.error;
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           message:
-            'Indicá área, transporte y tipo de itinerario para buscar la última grilla.',
+            'Indicá zona, transporte y tipo de itinerario para buscar la última grilla.',
         },
         { status: 400 },
       );

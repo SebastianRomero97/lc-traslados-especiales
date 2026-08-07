@@ -159,7 +159,7 @@ export function buildGrillaPrintBodyHtml(g: GrillaPrintInput): string {
         <span>${escapeHtml(g.transporteNombre)}</span>
       </div>
       <div class="bar bar--meta">
-        <span><strong>Área:</strong> ${escapeHtml(g.areaNombre)}</span>
+        <span><strong>Zona:</strong> ${escapeHtml(g.areaNombre)}</span>
         <span><strong>Nombre:</strong> ${escapeHtml(g.nombre || 'Sin nombre')}</span>
         <span><strong>Responsables:</strong> ${escapeHtml(responsablesDe(g))}</span>
       </div>
@@ -206,7 +206,7 @@ export function buildGrillaWhatsAppShareText(g: GrillaPrintInput): string {
   return [
     `Grilla: ${g.nombre || 'Sin nombre'}`,
     `${formatFechaGrilla(g.fecha)} · ${labelTipoItinerario(g.tipoItinerario)} · ${g.transporteNombre}`,
-    `Área: ${g.areaNombre}`,
+    `Zona: ${g.areaNombre}`,
     '',
     'Te mando el PDF de la grilla (adjuntá el archivo descargado).',
   ].join('\n');

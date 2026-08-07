@@ -286,6 +286,60 @@ Itinerario: {ingreso | salida} {nombre del transporte} {fecha}
 
 ---
 
+## Grillas entre zonas + conflictos (acordado ago 2026)
+
+> En la UI se usa **Zonas** (antes “Áreas”). En datos/código aún puede verse `Area`.
+> No usar el término “rondas” con el equipo ni en la app: ya existen **Ingreso**, **Adaptación** y **Salida**.
+
+### Contexto operativo
+Las zonas organizan el trabajo, pero a menudo hace falta **cruzar zonas** (caso fijo o excepción del día). Ejemplo: el pasajero vive cerca de Villa de Mayo y su destino está en San Miguel → un vehículo de Villa de Mayo lo **sube**, hacen **trasbordo** con un vehículo de San Miguel, y ese lo lleva al **destino**.
+
+### Pertenencia
+- El pasajero **pertenece a la zona de su destino**.
+- El domicilio es la dirección de subida; no cambia la zona de pertenencia.
+- Admin asigna el pasajero a esa zona del destino.
+
+### Pool cruzado al armar grilla
+- Al armar una grilla de la zona X se puede **ver y usar recursos de otras zonas**: pasajeros, destinos, choferes, celadoras y vehículos.
+- Siempre debe verse **de qué zona es** cada recurso (etiqueta clara).
+- No implica “mover” la pertenencia del pasajero.
+
+### Trasbordo (pasajero)
+- Acción de parada (además de Sube/Baja).
+- Campo visible obligatorio **“Trasbordo hacia…”** (texto: otro vehículo / referencia).
+- No vincula aún dos grillas en el sistema (vínculo formal = fase posterior).
+
+### Anti-duplicado (mismo día + misma modalidad)
+Aplica **en cualquier zona** (misma o distinta). Modalidad = grupo ya existente:
+
+| Recurso | Misma fecha + mismo grupo (Ingreso / Adaptación / Salida) |
+|---------|----------------------------------------------------------|
+| Vehículo | **Bloqueo duro** si ya está en otra grilla no finalizada |
+| Chofer | **Bloqueo duro** (igual) |
+| Celadora | **Bloqueo duro**, salvo que la grilla tenga el check **“Celadora hace trasbordo”** → entonces sí puede figurar en dos grillas |
+| Pasajero | Seguir la lógica de conflictos ya existente / refinar si hace falta |
+
+- Grillas **FINALIZADAS** liberan el recurso para armar otra del mismo grupo ese día (comportamiento actual a preservar).
+- No introducir labels “Ronda 1/2/3” en UI.
+
+### Check de grilla: “Celadora hace trasbordo”
+- Campo a nivel **grilla** (no por parada, por ahora).
+- Casos reales: la celadora se baja en un destino/trasbordo y el chofer sigue solo; o participa en un trasbordo entre vehículos.
+- Sin ese check → no puede estar en dos grillas del mismo día/modalidad.
+
+### Fuera de alcance inmediato (después)
+- Vínculo formal grilla A ↔ grilla B por trasbordo de un pasajero.
+- Renombrar modelo/rutas `Area` → `Zona` en código.
+
+### Prioridad de implementación sugerida
+1. Campo **Trasbordo hacia** usable en el tablero.
+2. Check **Celadora hace trasbordo** + regla de conflicto de celadora.
+3. Pool cruzado entre zonas (con etiqueta de zona).
+4. Afinar mensajes de conflicto (vehículo/chofer) al lenguaje de zonas/modalidad.
+5. (Luego) vínculo entre grillas.
+
+---
+
 ## Celadora — capacidades
 
 ### Asignación
@@ -421,6 +475,11 @@ Permite medir tiempos distintos (conducción vs. operación con pasajeros).
 - Stack y alcance principal: **confirmados**.
 - **Fases 1–8 + multi-rol:** listas.
 - Commit Fases 1–3 ya pusheado a GitHub (`4d9a20d`). Avances posteriores pendientes de commit/push.
+
+### Acuerdos ago 2026 (pendientes de implementar)
+- UI: “Áreas” → “Zonas” (hecho en labels).
+- Plan grillas entre zonas + anti-duplicado Ingreso/Adaptación/Salida + celadora con check trasbordo: ver sección dedicada arriba.
+- No usar el término “rondas” en producto.
 
 ### Claim DB (desarrollo)
 DB reclamada por el usuario.

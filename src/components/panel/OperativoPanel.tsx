@@ -507,7 +507,7 @@ export function OperativoPanel({
                   })}
                 </h2>
                 <p className="panel-card__desc">
-                  Área: {selected.area.nombre} · Chofer: {selected.chofer.username}
+                  Zona: {selected.area.nombre} · Chofer: {selected.chofer.username}
                   {selected.conCeladora
                     ? ` · Celadora: ${selected.celadora?.username ?? '—'}`
                     : ' · Sin celadora'}

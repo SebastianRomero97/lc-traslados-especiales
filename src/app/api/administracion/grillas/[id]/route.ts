@@ -150,6 +150,7 @@ export async function PATCH(request: Request, { params }: Params) {
       transporteId?: string;
       choferId?: string;
       conCeladora?: boolean;
+      celadoraHaceTrasbordo?: boolean;
       celadoraId?: string | null;
       puntoEncuentroId?: string | null;
       salidaDeBase?: boolean;
@@ -189,6 +190,10 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const conCeladora = body.conCeladora ?? existing.conCeladora;
+    const celadoraHaceTrasbordo =
+      body.celadoraHaceTrasbordo !== undefined
+        ? Boolean(body.celadoraHaceTrasbordo) && conCeladora
+        : existing.celadoraHaceTrasbordo && conCeladora;
     const celadoraId =
       body.celadoraId === undefined
         ? existing.celadoraId
@@ -282,6 +287,7 @@ export async function PATCH(request: Request, { params }: Params) {
       transporteId,
       choferId,
       celadoraId: conCeladora ? celadoraId : null,
+      celadoraHaceTrasbordo,
       pasajeroIds,
     });
 
@@ -349,6 +355,7 @@ export async function PATCH(request: Request, { params }: Params) {
           transporteId,
           choferId,
           conCeladora,
+          celadoraHaceTrasbordo,
           celadoraId: conCeladora ? celadoraId : null,
           puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
           ...(body.salidaDeBase !== undefined ? { salidaDeBase: Boolean(body.salidaDeBase) } : {}),

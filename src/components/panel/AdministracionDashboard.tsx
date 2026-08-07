@@ -3,16 +3,10 @@
 import { DragEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
+import { DESTINO_COLOR_PALETTE } from '@/lib/destino-color';
 
-/** Colores bien diferenciados (primarios) para vincular pasajero ↔ destino. */
-const DESTINO_PALETTE = [
-  '#dc2626', // rojo
-  '#2563eb', // azul
-  '#eab308', // amarillo
-  '#16a34a', // verde
-  '#7c3aed', // violeta
-  '#ea580c', // naranja
-];
+/** Fallback visual si aún no llegó el color de DB. */
+const DESTINO_PALETTE = DESTINO_COLOR_PALETTE;
 
 const DRAG_MIME = 'application/x-lc-recurso-area';
 
@@ -72,7 +66,13 @@ type RecursosPool = {
 type AreaDetail = {
   id: string;
   nombre: string;
-  destinos: { id: string; nombre: string; domicilio: string; active: boolean }[];
+  destinos: {
+    id: string;
+    nombre: string;
+    domicilio: string;
+    active: boolean;
+    color?: string | null;
+  }[];
   celadoras: { user: { id: string; username: string; active: boolean } }[];
   choferes?: { user: { id: string; username: string; active: boolean; isPrestador: boolean } }[];
   transportes: {
@@ -123,13 +123,20 @@ export function AdministracionDashboard() {
   const [dropHover, setDropHover] = useState(false);
   const [selectedDestinoId, setSelectedDestinoId] = useState<string | null>(null);
   const [openAcc, setOpenAcc] = useState<Record<AccordionKey, boolean>>({
-    celadoras: true,
+    celadoras: false,
     choferes: false,
-    vehiculos: true,
+    vehiculos: false,
     prestadores: false,
-    pasajeros: true,
+    pasajeros: false,
     destinos: false,
   });
+  const [poolSearch, setPoolSearch] = useState<Partial<Record<AccordionKey, string>>>({});
+
+  const matchPoolName = (nombre: string, key: AccordionKey) => {
+    const q = (poolSearch[key] ?? '').trim().toLowerCase();
+    if (!q) return true;
+    return nombre.toLowerCase().includes(q);
+  };
 
   const loadPool = useCallback(async () => {
     const response = await fetch('/api/administracion/recursos');
@@ -152,7 +159,7 @@ export function AdministracionDashboard() {
     const response = await fetch(`/api/administracion/areas/${areaId}`);
     const body = await response.json();
     if (!response.ok) {
-      popup.error(body.message ?? 'No se pudo cargar el área.');
+      popup.error(body.message ?? 'No se pudo cargar la zona.');
       return;
     }
     setDetail(body.data.area as AreaDetail);
@@ -182,7 +189,7 @@ export function AdministracionDashboard() {
 
   const assign = async (payload: Record<string, string | null>) => {
     if (!selectedAreaId) {
-      popup.error('Seleccioná un área primero.');
+      popup.error('Seleccioná una zona primero.');
       return;
     }
     setBusy(true);
@@ -205,7 +212,7 @@ export function AdministracionDashboard() {
   };
 
   const areaNombre = (id: string) =>
-    pool?.areas.find((a) => a.id === id)?.nombre ?? detail?.nombre ?? 'área';
+    pool?.areas.find((a) => a.id === id)?.nombre ?? detail?.nombre ?? 'zona';
 
   const handleDropOnArea = async (e: DragEvent) => {
     e.preventDefault();
@@ -215,7 +222,7 @@ export function AdministracionDashboard() {
 
     if (payload.kind === 'celadora') {
       if (detail?.celadoras.some((c) => c.user.id === payload.id)) {
-        popup.warning('Esa celadora ya está en el área.');
+        popup.warning('Esa celadora ya está en la zona.');
         return;
       }
       await assign({ action: 'add_celadora', userId: payload.id });
@@ -224,7 +231,7 @@ export function AdministracionDashboard() {
 
     if (payload.kind === 'chofer' || payload.kind === 'prestador') {
       if (detail?.choferes?.some((c) => c.user.id === payload.id)) {
-        popup.warning('Ese chofer ya está en el área.');
+        popup.warning('Ese chofer ya está en la zona.');
         return;
       }
       await assign({ action: 'add_chofer', userId: payload.id });
@@ -233,7 +240,7 @@ export function AdministracionDashboard() {
 
     if (payload.kind === 'vehiculo') {
       if (detail?.transportes.some((t) => t.transporte.id === payload.id)) {
-        popup.warning('Ese vehículo ya está en el área.');
+        popup.warning('Ese vehículo ya está en la zona.');
         return;
       }
       await assign({ action: 'add_transporte', transporteId: payload.id });
@@ -242,14 +249,14 @@ export function AdministracionDashboard() {
 
     if (payload.kind === 'pasajero') {
       if (detail?.pasajeros.some((p) => p.pasajero.id === payload.id)) {
-        popup.warning('Ese pasajero ya está en el área.');
+        popup.warning('Ese pasajero ya está en la zona.');
         return;
       }
       const pasajero = pool?.pasajeros.find((p) => p.id === payload.id);
       const otras = pasajero?.areas.filter((a) => a.id !== selectedAreaId) ?? [];
       if (otras.length > 0) {
         const ok = await popup.confirm({
-          title: 'Pasajero en otra área',
+          title: 'Pasajero en otra zona',
           message: `Este pasajero está asignado en ${otras.map((a) => a.nombre).join(', ')}, ¿deseás asignarlo también en ${areaNombre(selectedAreaId)}?`,
           confirmLabel: 'Sí, asignar también',
           cancelLabel: 'Cancelar',
@@ -264,7 +271,7 @@ export function AdministracionDashboard() {
       const destino = pool?.destinos.find((d) => d.id === payload.id);
       if (!destino) return;
       if (destino.areaId === selectedAreaId) {
-        popup.warning('Ese destino ya pertenece a esta área.');
+        popup.warning('Ese destino ya pertenece a esta zona.');
         return;
       }
       const ok = await popup.confirm({
@@ -280,16 +287,24 @@ export function AdministracionDashboard() {
 
   const destinosAsignables =
     detail?.destinos.filter((d) => d.active && !/^base\s*lc$/i.test(d.nombre.trim())) ?? [];
-  const destinoColorById = useMemo(
-    () =>
-      new Map(
-        destinosAsignables.map((d, index) => [
-          d.id,
-          DESTINO_PALETTE[index % DESTINO_PALETTE.length],
-        ]),
-      ),
-    [destinosAsignables],
-  );
+  const destinoColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    const used = new Set<string>();
+    destinosAsignables.forEach((d, index) => {
+      const fromDb = d.color?.trim();
+      if (fromDb) {
+        map.set(d.id, fromDb);
+        used.add(fromDb.toLowerCase());
+        return;
+      }
+      const fallback =
+        DESTINO_PALETTE.find((c) => !used.has(c.toLowerCase())) ??
+        DESTINO_PALETTE[index % DESTINO_PALETTE.length];
+      map.set(d.id, fallback);
+      used.add(fallback.toLowerCase());
+    });
+    return map;
+  }, [destinosAsignables]);
 
   const togglePasajeroDestino = (pasajeroId: string) => {
     if (!selectedDestinoId) {
@@ -332,7 +347,7 @@ export function AdministracionDashboard() {
     >
       <strong>{title}</strong>
       {subtitle && <small>{subtitle}</small>}
-      {usedInCurrent && <span className="adm-pool-card__badge">En esta área</span>}
+      {usedInCurrent && <span className="adm-pool-card__badge">En esta zona</span>}
       {!usedInCurrent && usedElsewhere && (
         <span className="adm-pool-card__badge adm-pool-card__badge--other">
           {usedElsewhere}
@@ -349,7 +364,7 @@ export function AdministracionDashboard() {
         <aside className="adm-board__pool panel-card">
           <h2>Recursos</h2>
           <p className="panel-card__desc">
-            Arrastrá al área activa. Celadoras, choferes y vehículos pueden estar en varias áreas.
+            Arrastrá a la zona activa. Celadoras, choferes y vehículos pueden estar en varias zonas.
           </p>
 
           {(
@@ -358,7 +373,9 @@ export function AdministracionDashboard() {
                 key: 'celadoras' as const,
                 label: 'Celadoras',
                 count: pool?.celadoras.length ?? 0,
-                body: pool?.celadoras.map((c) =>
+                body: pool?.celadoras
+                  .filter((c) => matchPoolName(c.username, 'celadoras'))
+                  .map((c) =>
                   renderPoolCard(
                     c.id,
                     c.username,
@@ -376,7 +393,9 @@ export function AdministracionDashboard() {
                 key: 'choferes' as const,
                 label: 'Choferes',
                 count: pool?.choferes.length ?? 0,
-                body: pool?.choferes.map((c) =>
+                body: pool?.choferes
+                  .filter((c) => matchPoolName(c.username, 'choferes'))
+                  .map((c) =>
                   renderPoolCard(
                     c.id,
                     c.username,
@@ -394,7 +413,9 @@ export function AdministracionDashboard() {
                 key: 'vehiculos' as const,
                 label: 'Vehículos',
                 count: pool?.transportes.length ?? 0,
-                body: pool?.transportes.map((t) =>
+                body: pool?.transportes
+                  .filter((t) => matchPoolName(t.nombre, 'vehiculos'))
+                  .map((t) =>
                   renderPoolCard(
                     t.id,
                     t.nombre,
@@ -421,7 +442,9 @@ export function AdministracionDashboard() {
                       Prestador).
                     </p>
                   ) : (
-                    pool?.prestadores.map((c) =>
+                    pool?.prestadores
+                      .filter((c) => matchPoolName(c.username, 'prestadores'))
+                      .map((c) =>
                       renderPoolCard(
                         c.id,
                         c.username,
@@ -442,7 +465,9 @@ export function AdministracionDashboard() {
                 key: 'pasajeros' as const,
                 label: 'Pasajeros',
                 count: pool?.pasajeros.length ?? 0,
-                body: pool?.pasajeros.map((p) => {
+                body: pool?.pasajeros
+                  .filter((p) => matchPoolName(p.nombre, 'pasajeros'))
+                  .map((p) => {
                   const inCurrent = p.areaIds.includes(selectedAreaId);
                   return renderPoolCard(
                     p.id,
@@ -462,7 +487,9 @@ export function AdministracionDashboard() {
                 key: 'destinos' as const,
                 label: 'Destinos',
                 count: pool?.destinos.length ?? 0,
-                body: pool?.destinos.map((d) =>
+                body: pool?.destinos
+                  .filter((d) => matchPoolName(d.nombre, 'destinos'))
+                  .map((d) =>
                   renderPoolCard(
                     d.id,
                     d.nombre,
@@ -470,7 +497,7 @@ export function AdministracionDashboard() {
                     'destino',
                     d.id,
                     d.areaId === selectedAreaId,
-                    d.areaId !== selectedAreaId ? `Área: ${d.area.nombre}` : undefined,
+                    d.areaId !== selectedAreaId ? `Zona: ${d.area.nombre}` : undefined,
                   ),
                 ),
               },
@@ -492,7 +519,24 @@ export function AdministracionDashboard() {
                 <span className="adm-assign-count">{section.count}</span>
               </button>
               {openAcc[section.key] && (
-                <div className="adm-pool-acc__body">{section.body}</div>
+                <div className="adm-pool-acc__body">
+                  <input
+                    type="search"
+                    className="recursos-acc-search"
+                    placeholder={`Buscar ${section.label.toLowerCase()}…`}
+                    value={poolSearch[section.key] ?? ''}
+                    onChange={(e) =>
+                      setPoolSearch((prev) => ({ ...prev, [section.key]: e.target.value }))
+                    }
+                    aria-label={`Buscar ${section.label}`}
+                  />
+                  {section.body}
+                  {Array.isArray(section.body) &&
+                    section.body.length === 0 &&
+                    Boolean((poolSearch[section.key] ?? '').trim()) && (
+                      <p className="adm-assign-empty">Sin resultados para esa búsqueda.</p>
+                    )}
+                </div>
               )}
             </div>
           ))}
@@ -500,7 +544,7 @@ export function AdministracionDashboard() {
 
         <div className="adm-board__areas">
           <div className="admin-tabs-shell adm-area-tabs">
-            <div className="admin-tabs" role="tablist" aria-label="Áreas">
+            <div className="admin-tabs" role="tablist" aria-label="Zonas">
               {(pool?.areas ?? []).map((area) => (
                 <button
                   key={area.id}
@@ -527,8 +571,8 @@ export function AdministracionDashboard() {
               {!detail ? (
                 <p className="panel-card__desc" style={{ margin: 0 }}>
                   {(pool?.areas.length ?? 0) === 0
-                    ? 'Todavía no hay áreas. Pedile a Admin que las cree.'
-                    : 'Seleccioná un área.'}
+                    ? 'Todavía no hay zonas. Pedile a Admin que las cree.'
+                    : 'Seleccioná una zona.'}
                 </p>
               ) : (
                 <div className="adm-area-panel">
@@ -569,7 +613,7 @@ export function AdministracionDashboard() {
                     <h3>Choferes / Prestadores</h3>
                     {(detail.choferes?.length ?? 0) === 0 ? (
                       <p className="adm-assign-empty">
-                        Sin choferes asignados al área (opcional; en la grilla se usa el del
+                        Sin choferes asignados a la zona (opcional; en la grilla se usa el del
                         vehículo).
                       </p>
                     ) : (
@@ -641,7 +685,7 @@ export function AdministracionDashboard() {
                       <div>
                         <h4>Pasajeros</h4>
                         {detail.pasajeros.length === 0 ? (
-                          <p className="adm-assign-empty">Arrastrá pasajeros al área.</p>
+                          <p className="adm-assign-empty">Arrastrá pasajeros a la zona.</p>
                         ) : (
                           <ul className="adm-pasajero-destino-list">
                             {detail.pasajeros.map((p) => {
@@ -707,7 +751,7 @@ export function AdministracionDashboard() {
                         <h4>Destinos</h4>
                         {destinosAsignables.length === 0 ? (
                           <p className="adm-assign-empty">
-                            Arrastrá destinos al área (o pedile a Admin que los cree).
+                            Arrastrá destinos a la zona (o pedile a Admin que los cree).
                           </p>
                         ) : (
                           <ul className="adm-destino-pick-list">

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAdministracionApi } from '@/lib/administracion-auth';
 import { describeCaughtError } from '@/lib/api-errors';
 
-/** Pool global de recursos para el tablero Área y asignaciones. */
+/** Pool global de recursos para el tablero Zona y asignaciones. */
 export async function GET() {
   const auth = await requireAdministracionApi();
   if ('error' in auth) return auth.error;

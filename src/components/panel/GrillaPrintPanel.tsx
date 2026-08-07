@@ -66,7 +66,7 @@ export function GrillaPrintPanel({ grilla }: { grilla: GrillaPrintInput }) {
       </div>
       <div className="grilla-print-panel__bar grilla-print-panel__bar--meta">
         <span>
-          <strong>Área:</strong> {grilla.areaNombre}
+          <strong>Zona:</strong> {grilla.areaNombre}
         </span>
         <span>
           <strong>Nombre:</strong> {grilla.nombre || 'Sin nombre'}

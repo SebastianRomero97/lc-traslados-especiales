@@ -520,7 +520,14 @@ export function formatConflictMessage(
   conflict: ResourceConflict,
   targetAreaNombre: string,
 ): string {
-  return `Este ${labelConflictKind(conflict.kind)} (${conflict.resourceLabel}) ya está asignado en ${conflict.areaNombre}. ¿Desea cambiarlo y asignarlo en ${targetAreaNombre}?`;
+  const kind = labelConflictKind(conflict.kind);
+  const grilla = conflict.grillaNombre ? ` (grilla «${conflict.grillaNombre}»)` : '';
+
+  if (conflict.kind === 'pasajero') {
+    return `Este pasajero (${conflict.resourceLabel}) ya está en la zona ${conflict.areaNombre}${grilla}. ¿Deseás quitarlo de ahí y usarlo en ${targetAreaNombre}?`;
+  }
+
+  return `Este ${kind} (${conflict.resourceLabel}) ya está asignado en la zona ${conflict.areaNombre}${grilla} para el mismo día e itinerario (Ingreso / Adaptación / Salida). No se puede usar en dos grillas a la vez.`;
 }
 
 /** Parsea "HH:MM" a minutos desde medianoche. */

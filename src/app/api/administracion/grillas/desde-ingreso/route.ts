@@ -14,7 +14,7 @@ import {
 
 /**
  * Arma una sugerencia de grilla de SALIDAS a partir de quienes
- * asistieron en la grilla de INGRESOS del mismo día/área.
+ * asistieron en la grilla de INGRESOS del mismo día/zona.
  * Transporte y celadora vienen precargados pero son editables en el form.
  */
 export async function GET(request: Request) {
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
         {
           message: transporteId
             ? 'No hay grilla de Ingresos ese día para ese transporte.'
-            : 'No hay grilla de Ingresos ese día en el área.',
+            : 'No hay grilla de Ingresos ese día en la zona.',
         },
         { status: 404 },
       );
@@ -230,6 +230,7 @@ export async function GET(request: Request) {
           fecha,
           nota: ingreso.nota,
           conCeladora: ingreso.conCeladora,
+          celadoraHaceTrasbordo: Boolean(ingreso.celadoraHaceTrasbordo),
           transporteId: ingreso.transporteId,
           choferId: ingreso.choferId,
           celadoraId: ingreso.celadoraId,

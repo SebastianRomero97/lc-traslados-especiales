@@ -11,7 +11,7 @@ export default async function AdministracionPanelPage() {
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>
-          Asigná recursos a cada área y armá grillas (hojas de ruta) para el equipo. Las áreas y
+          Asigná recursos a cada zona y armá grillas (hojas de ruta) para el equipo. Las zonas y
           destinos los gestiona Admin.
         </p>
       </section>

@@ -52,7 +52,7 @@ export type RespaldoGrilla = {
   }[];
 };
 
-/** Jornada unificada: misma fecha + área + nombre + modalidad (ingreso/salida). */
+/** Jornada unificada: misma fecha + zona + nombre + modalidad (ingreso/salida). */
 export type RespaldoJornada = {
   fechaKey: string;
   fecha: string;
@@ -93,7 +93,7 @@ function jornadaGroupKey(g: RespaldoGrilla): string {
   ].join('|');
 }
 
-/** Agrupa grillas sueltas en jornadas (fecha + área + nombre + modalidad). */
+/** Agrupa grillas sueltas en jornadas (fecha + zona + nombre + modalidad). */
 export function agruparRespaldoJornadas(grillas: RespaldoGrilla[]): RespaldoJornada[] {
   const map = new Map<string, RespaldoJornada>();
 
@@ -225,7 +225,7 @@ function renderRecorridoBlock(
         <span>${escapeHtml(g.transporte)}</span>
       </div>
       <div class="bar bar--meta">
-        <span><strong>Área:</strong> ${escapeHtml(jornada.area)}</span>
+        <span><strong>Zona:</strong> ${escapeHtml(jornada.area)}</span>
         <span><strong>Nombre:</strong> ${escapeHtml(jornada.nombre)}</span>
         <span><strong>Responsables:</strong> ${escapeHtml(responsablesDe(g))}</span>
       </div>
@@ -272,7 +272,7 @@ export function buildGrillasCsv(grillas: RespaldoGrilla[]): string {
     'Fecha',
     'Nombre',
     'Itinerario',
-    'Area',
+    'Zona',
     'Transporte',
     'Tipo',
     'Chofer',
@@ -326,7 +326,7 @@ export function buildAsistenciasCsv(grillas: RespaldoGrilla[]): string {
     'Fecha',
     'Nombre',
     'Modalidad',
-    'Area',
+    'Zona',
     'Pasajero',
     'Ingreso',
     'Obs ingreso',

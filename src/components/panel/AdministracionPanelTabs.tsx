@@ -32,7 +32,7 @@ export function AdministracionPanelTabs({
             aria-selected={tab === 'areas'}
             onClick={() => setTab('areas')}
           >
-            Área y asignaciones
+            Zona y asignaciones
           </button>
           <button
             type="button"

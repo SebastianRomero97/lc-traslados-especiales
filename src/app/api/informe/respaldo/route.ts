@@ -177,7 +177,7 @@ export async function GET(request: Request) {
     });
 
     const filtrosResumen = [
-      areaId ? `Área: ${areas.find((a) => a.id === areaId)?.nombre ?? areaId}` : 'Área: todas',
+      areaId ? `Zona: ${areas.find((a) => a.id === areaId)?.nombre ?? areaId}` : 'Zona: todas',
       transporteId
         ? `Transporte: ${transportes.find((t) => t.id === transporteId)?.nombre ?? transporteId}`
         : 'Transporte: todos',

@@ -188,6 +188,8 @@ model Destino {
   id        String   @id @default(cuid())
   nombre    String
   domicilio String
+  /// Color de identidad en el área (hex, único por área).
+  color     String?
   lat       Float?
   lon       Float?
   usarCoordsParaChofer Boolean @default(false)
@@ -300,6 +302,8 @@ model Grilla {
   /// Nota del Admin cuando observa / pide corrección.
   notaRevision   String?
   conCeladora    Boolean        @default(true)
+  /// Si true, esta celadora puede figurar en otra grilla del mismo día/itinerario (hace trasbordo).
+  celadoraHaceTrasbordo Boolean @default(false)
 
   areaId String
   area   Area   @relation(fields: [areaId], references: [id], onDelete: Restrict)

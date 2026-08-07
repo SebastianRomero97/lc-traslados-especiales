@@ -31,7 +31,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'choferes', label: 'Choferes' },
   { id: 'transportes', label: 'Transportes' },
-  { id: 'areas', label: 'Áreas' },
+  { id: 'areas', label: 'Zonas' },
   { id: 'grillas', label: 'Grillas' },
   { id: 'historial', label: 'Historial' },
   { id: 'respaldo', label: 'Respaldo' },

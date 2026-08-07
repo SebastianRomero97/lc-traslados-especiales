@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdministracionApi } from '@/lib/administracion-auth';
 import { describeCaughtError } from '@/lib/api-errors';
+import { allocateDestinoColor } from '@/lib/destino-color-server';
 
 type Body = {
   areaId?: string;
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
 
     const area = await prisma.area.findUnique({ where: { id: areaId } });
     if (!area) {
-      return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+      return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
     switch (action) {
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
           update: {},
           create: { areaId, userId },
         });
-        return NextResponse.json({ message: 'Celadora asignada al área.' });
+        return NextResponse.json({ message: 'Celadora asignada a la zona.' });
       }
 
       case 'remove_celadora': {
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ message: 'Falta userId.' }, { status: 400 });
         }
         await prisma.areaCeladora.deleteMany({ where: { areaId, userId } });
-        return NextResponse.json({ message: 'Celadora removida del área.' });
+        return NextResponse.json({ message: 'Celadora removida de la zona.' });
       }
 
       case 'add_chofer': {
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
           create: { areaId, userId },
         });
         return NextResponse.json({
-          message: user.isPrestador ? 'Prestador asignado al área.' : 'Chofer asignado al área.',
+          message: user.isPrestador ? 'Prestador asignado a la zona.' : 'Chofer asignado a la zona.',
         });
       }
 
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ message: 'Falta userId.' }, { status: 400 });
         }
         await prisma.areaChofer.deleteMany({ where: { areaId, userId } });
-        return NextResponse.json({ message: 'Chofer removido del área.' });
+        return NextResponse.json({ message: 'Chofer removido de la zona.' });
       }
 
       case 'add_transporte': {
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
           update: {},
           create: { areaId, transporteId },
         });
-        return NextResponse.json({ message: 'Transporte asignado al área.' });
+        return NextResponse.json({ message: 'Transporte asignado a la zona.' });
       }
 
       case 'remove_transporte': {
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ message: 'Falta transporteId.' }, { status: 400 });
         }
         await prisma.areaTransporte.deleteMany({ where: { areaId, transporteId } });
-        return NextResponse.json({ message: 'Transporte removido del área.' });
+        return NextResponse.json({ message: 'Transporte removido de la zona.' });
       }
 
       case 'add_pasajero': {
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
           update: {},
           create: { areaId, pasajeroId },
         });
-        return NextResponse.json({ message: 'Pasajero asignado al área.' });
+        return NextResponse.json({ message: 'Pasajero asignado a la zona.' });
       }
 
       case 'remove_pasajero': {
@@ -146,7 +147,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ message: 'Falta pasajeroId.' }, { status: 400 });
         }
         await prisma.areaPasajero.deleteMany({ where: { areaId, pasajeroId } });
-        return NextResponse.json({ message: 'Pasajero removido del área.' });
+        return NextResponse.json({ message: 'Pasajero removido de la zona.' });
       }
 
       case 'set_pasajero_destino': {
@@ -160,7 +161,7 @@ export async function POST(request: Request) {
         });
         if (!linked) {
           return NextResponse.json(
-            { message: 'El pasajero debe estar asignado al área primero.' },
+            { message: 'El pasajero debe estar asignado a la zona primero.' },
             { status: 400 },
           );
         }
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
         });
         if (!destino) {
           return NextResponse.json(
-            { message: 'El destino no pertenece a esta área.' },
+            { message: 'El destino no pertenece a esta zona.' },
             { status: 400 },
           );
         }
@@ -218,13 +219,14 @@ export async function POST(request: Request) {
           return NextResponse.json({ message: 'El destino no es válido.' }, { status: 400 });
         }
         if (destino.areaId === areaId) {
-          return NextResponse.json({ message: 'El destino ya pertenece a esta área.' });
+          return NextResponse.json({ message: 'El destino ya pertenece a esta zona.' });
         }
+        const color = await allocateDestinoColor(areaId, destinoId);
         await prisma.destino.update({
           where: { id: destinoId },
-          data: { areaId },
+          data: { areaId, color },
         });
-        return NextResponse.json({ message: 'Destino movido al área.' });
+        return NextResponse.json({ message: 'Destino movido a la zona.' });
       }
 
       case 'set_transporte_celadora': {
@@ -239,7 +241,7 @@ export async function POST(request: Request) {
         });
         if (!inArea) {
           return NextResponse.json(
-            { message: 'El transporte debe estar asignado al área primero.' },
+            { message: 'El transporte debe estar asignado a la zona primero.' },
             { status: 400 },
           );
         }
@@ -249,7 +251,7 @@ export async function POST(request: Request) {
         });
         if (!celadoraInArea) {
           return NextResponse.json(
-            { message: 'La celadora debe estar asignada al área primero.' },
+            { message: 'La celadora debe estar asignada a la zona primero.' },
             { status: 400 },
           );
         }

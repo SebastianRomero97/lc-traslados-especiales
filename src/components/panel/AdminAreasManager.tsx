@@ -40,14 +40,14 @@ export function AdminAreasManager() {
       const response = await fetch('/api/admin/areas');
       const body = await response.json();
       if (!response.ok) {
-        popup.error(body.message ?? 'No se pudieron cargar las áreas.');
+        popup.error(body.message ?? 'No se pudieron cargar las zonas.');
         return;
       }
       const list = body.data as Area[];
       setAreas(list);
       setSelectedAreaId((current) => current || list[0]?.id || '');
     } catch {
-      popup.error('Error de conexión al cargar áreas.');
+      popup.error('Error de conexión al cargar zonas.');
     } finally {
       setLoading(false);
     }
@@ -62,7 +62,7 @@ export function AdminAreasManager() {
 
   const createArea = async (event: FormEvent) => {
     event.preventDefault();
-    const missing = missingFieldsMessage({ nombre: newAreaName }, { nombre: 'nombre del área' });
+    const missing = missingFieldsMessage({ nombre: newAreaName }, { nombre: 'nombre de la zona' });
     if (missing) {
       popup.error(missing);
       return;
@@ -73,28 +73,28 @@ export function AdminAreasManager() {
       body: JSON.stringify({ nombre: newAreaName }),
     });
     if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo crear el área.'));
+      popup.error(await readApiError(response, 'No se pudo crear la zona.'));
       return;
     }
     const body = (await response.json()) as { message?: string; data?: { id: string } };
     setNewAreaName('');
-    popup.success(body.message ?? 'Área creada.');
+    popup.success(body.message ?? 'Zona creada.');
     await load();
     if (body.data?.id) setSelectedAreaId(body.data.id);
   };
 
   const deleteArea = async (area: Area) => {
     const ok = await popup.confirm({
-      message: `¿Eliminar el área "${area.nombre}" y sus destinos?`,
+      message: `¿Eliminar la zona "${area.nombre}" y sus destinos?`,
       confirmLabel: 'Eliminar',
     });
     if (!ok) return;
     const response = await fetch(`/api/admin/areas/${area.id}`, { method: 'DELETE' });
     if (!response.ok) {
-      popup.error(await readApiError(response, 'No se pudo eliminar el área.'));
+      popup.error(await readApiError(response, 'No se pudo eliminar la zona.'));
       return;
     }
-    popup.success('Área eliminada.');
+    popup.success('Zona eliminada.');
     setSelectedAreaId('');
     await load();
   };
@@ -102,7 +102,7 @@ export function AdminAreasManager() {
   const createDestino = async (event: FormEvent) => {
     event.preventDefault();
     if (!selectedAreaId) {
-      popup.error('Seleccioná un área primero.');
+      popup.error('Seleccioná una zona primero.');
       return;
     }
     const missing = missingFieldsMessage(
@@ -181,7 +181,7 @@ export function AdminAreasManager() {
     return (
       <div className="admin-section">
         {popup.popupNode}
-        <p className="panel-card__desc">Cargando áreas...</p>
+        <p className="panel-card__desc">Cargando zonas...</p>
       </div>
     );
   }
@@ -191,14 +191,14 @@ export function AdminAreasManager() {
       {popup.popupNode}
 
       <section className="panel-card">
-        <h2>Áreas</h2>
+        <h2>Zonas</h2>
         <p className="panel-card__desc">
-          Solo Admin crea, modifica y elimina áreas y destinos. Administración los usa para asignar
+          Solo Admin crea, modifica y elimina zonas y destinos. Administración los usa para asignar
           y armar grillas.
         </p>
         <form className="admin-grid-form admin-grid-form--2" onSubmit={createArea}>
           <div className="form-group">
-            <label htmlFor="admin-area-nombre">Nueva área</label>
+            <label htmlFor="admin-area-nombre">Nueva zona</label>
             <input
               id="admin-area-nombre"
               value={newAreaName}
@@ -208,13 +208,13 @@ export function AdminAreasManager() {
             />
           </div>
           <button type="submit" className="btn btn--primary">
-            Crear área
+            Crear zona
           </button>
         </form>
       </section>
 
       <div className="admin-tabs-shell">
-        <div className="admin-tabs" role="tablist" aria-label="Áreas">
+        <div className="admin-tabs" role="tablist" aria-label="Zonas">
           {areas.map((area) => (
             <button
               key={area.id}
@@ -233,22 +233,22 @@ export function AdminAreasManager() {
           {!selected ? (
             <p className="panel-card__desc" style={{ margin: 0 }}>
               {areas.length === 0
-                ? 'Creá un área para empezar.'
-                : 'Seleccioná un área para gestionar destinos.'}
+                ? 'Creá una zona para empezar.'
+                : 'Seleccioná una zona para gestionar destinos.'}
             </p>
           ) : (
             <div className="adm-area-detail">
               <div className="adm-assign-row" style={{ marginBottom: 'var(--space-sm)' }}>
                 <p className="panel-card__desc" style={{ margin: 0, flex: 1 }}>
                   {selected._count.destinos} destino(s) · {selected._count.pasajeros} pasajero(s) en
-                  área
+                  zona
                 </p>
                 <button
                   type="button"
                   className="btn btn--danger btn--sm"
                   onClick={() => void deleteArea(selected)}
                 >
-                  Eliminar área
+                  Eliminar zona
                 </button>
               </div>
 

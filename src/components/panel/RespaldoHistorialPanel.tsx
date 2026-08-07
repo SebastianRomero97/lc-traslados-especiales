@@ -142,7 +142,7 @@ export function RespaldoHistorialPanel() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="r-area">Área</label>
+            <label htmlFor="r-area">Zona</label>
             <select id="r-area" value={areaId} onChange={(e) => setAreaId(e.target.value)}>
               <option value="">Todas</option>
               {areas.map((a) => (
@@ -239,7 +239,7 @@ export function RespaldoHistorialPanel() {
                       <th>Fecha</th>
                       <th>Nombre</th>
                       <th>Itinerario</th>
-                      <th>Área</th>
+                      <th>Zona</th>
                       <th>Transporte</th>
                       <th>Responsables</th>
                       <th>Asist.</th>

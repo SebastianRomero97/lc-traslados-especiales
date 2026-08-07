@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { describeCaughtError, missingFieldsMessage } from '@/lib/api-errors';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
+import { allocateDestinoColor } from '@/lib/destino-color-server';
 
 /** Alta de destinos (solo Admin). */
 export async function POST(request: Request) {
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
 
     const missing = missingFieldsMessage(
       { areaId, nombre, domicilio },
-      { areaId: 'área', nombre: 'nombre del destino', domicilio: 'domicilio' },
+      { areaId: 'zona', nombre: 'nombre del destino', domicilio: 'domicilio' },
     );
     if (missing) {
       return NextResponse.json({ message: missing }, { status: 400 });
@@ -29,11 +30,18 @@ export async function POST(request: Request) {
 
     const area = await prisma.area.findUnique({ where: { id: areaId! } });
     if (!area) {
-      return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+      return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
+    const color = await allocateDestinoColor(areaId!);
     const destino = await prisma.destino.create({
-      data: { areaId: areaId!, nombre: nombre!, domicilio: domicilio!, active: true },
+      data: {
+        areaId: areaId!,
+        nombre: nombre!,
+        domicilio: domicilio!,
+        color,
+        active: true,
+      },
     });
 
     return NextResponse.json({ data: destino, message: 'Destino creado.' }, { status: 201 });

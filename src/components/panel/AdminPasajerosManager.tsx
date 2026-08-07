@@ -501,10 +501,10 @@ export function AdminPasajerosManager() {
                           </div>
                         </div>
 
-                        <h3 className="transporte-ficha__hist-title">Área y destinos</h3>
+                        <h3 className="transporte-ficha__hist-title">Zona y destinos</h3>
                         {item.areas.length === 0 ? (
                           <p className="panel-card__desc">
-                            Sin asignaciones actuales. Se gestionan desde Áreas.
+                            Sin asignaciones actuales. Se gestionan desde Zonas.
                           </p>
                         ) : (
                           <ul className="transporte-ficha__novedades">

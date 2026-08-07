@@ -120,6 +120,7 @@ export async function POST(request: Request) {
       fecha?: string;
       nota?: string;
       conCeladora?: boolean;
+      celadoraHaceTrasbordo?: boolean;
       areaId?: string;
       transporteId?: string;
       choferId?: string;
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
     const transporteId = body.transporteId?.trim();
     const choferId = body.choferId?.trim();
     const conCeladora = body.conCeladora !== false;
+    const celadoraHaceTrasbordo = Boolean(body.celadoraHaceTrasbordo) && conCeladora;
     const celadoraId = body.celadoraId?.trim() || null;
     const puntoEncuentroId = body.puntoEncuentroId?.trim() || null;
     const filas = body.filas ?? [];
@@ -157,7 +159,7 @@ export async function POST(request: Request) {
         nombre: 'nombre de la grilla',
         tipoItinerario: 'tipo de itinerario',
         fecha: 'fecha',
-        areaId: 'área',
+        areaId: 'zona',
         transporteId: 'transporte',
         choferId: 'chofer',
         celadoraId: 'celadora',
@@ -215,7 +217,7 @@ export async function POST(request: Request) {
     ]);
 
     if (!area) {
-      return NextResponse.json({ message: 'El área seleccionada no existe.' }, { status: 400 });
+      return NextResponse.json({ message: 'La zona seleccionada no existe.' }, { status: 400 });
     }
     if (!transporte) {
       return NextResponse.json(
@@ -253,6 +255,7 @@ export async function POST(request: Request) {
       transporteId: transporteId!,
       choferId: choferId!,
       celadoraId: conCeladora ? celadoraId : null,
+      celadoraHaceTrasbordo,
       pasajeroIds,
     });
 
@@ -283,6 +286,7 @@ export async function POST(request: Request) {
           fecha: fechaDay,
           nota: body.nota?.trim() || null,
           conCeladora,
+          celadoraHaceTrasbordo,
           salidaDeBase: Boolean(body.salidaDeBase),
           retornoABase: Boolean(body.retornoABase),
           areaId: areaId!,

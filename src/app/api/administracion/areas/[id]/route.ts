@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-auth';
 import { requireAdministracionApi } from '@/lib/administracion-auth';
 import { describeCaughtError } from '@/lib/api-errors';
+import { ensureDestinoColorsForArea } from '@/lib/destino-color-server';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -11,6 +12,8 @@ export async function GET(_request: Request, { params }: Params) {
   if ('error' in auth) return auth.error;
 
   const { id } = await params;
+
+  await ensureDestinoColorsForArea(id);
 
   const area = await prisma.area.findUnique({
     where: { id },
@@ -53,7 +56,15 @@ export async function GET(_request: Request, { params }: Params) {
           pasajero: true,
           destinos: {
             include: {
-              destino: { select: { id: true, nombre: true, domicilio: true, active: true } },
+              destino: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  domicilio: true,
+                  active: true,
+                  color: true,
+                },
+              },
             },
           },
         },
@@ -62,7 +73,7 @@ export async function GET(_request: Request, { params }: Params) {
   });
 
   if (!area) {
-    return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+    return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
   }
 
   const areaPayload = {
@@ -114,7 +125,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const body = (await request.json()) as { nombre?: string; active?: boolean };
     const existing = await prisma.area.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+      return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
     const data: { nombre?: string; active?: boolean } = {};
@@ -122,10 +133,10 @@ export async function PATCH(request: Request, { params }: Params) {
     if (typeof body.active === 'boolean') data.active = body.active;
 
     const area = await prisma.area.update({ where: { id }, data });
-    return NextResponse.json({ data: area, message: 'Área actualizada.' });
+    return NextResponse.json({ data: area, message: 'Zona actualizada.' });
   } catch (error) {
     console.error('[API /administracion/areas PATCH]', error);
-    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos actualizar el área.') }, { status: 500 });
+    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos actualizar la zona.') }, { status: 500 });
   }
 }
 
@@ -138,13 +149,13 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     const existing = await prisma.area.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ message: 'Área no encontrada.' }, { status: 404 });
+      return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
     await prisma.area.delete({ where: { id } });
-    return NextResponse.json({ message: 'Área eliminada.' });
+    return NextResponse.json({ message: 'Zona eliminada.' });
   } catch (error) {
     console.error('[API /administracion/areas DELETE]', error);
-    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos eliminar el área.') }, { status: 500 });
+    return NextResponse.json({ message: describeCaughtError(error, 'No pudimos eliminar la zona.') }, { status: 500 });
   }
 }
