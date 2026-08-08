@@ -4575,6 +4575,59 @@ button, input, select, textarea {
   box-shadow: inset 0 0 0 1px var(--chip-color, #64748b);
 }
 
+.grillas-zona-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--zona-color, #0d9488);
+}
+
+.grillas-zona-badge::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--zona-color, #0d9488);
+  flex-shrink: 0;
+}
+
+.grillas-zona-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.grillas-zona-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.grillas-zona-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.grillas-mes__zona-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+  min-height: 0.5rem;
+}
+
+.grillas-filtro-zona select {
+  min-width: 10rem;
+}
+
 .grillas-semana__nav,
 .grillas-mes__nav {
   display: flex;
@@ -4635,9 +4688,13 @@ button, input, select, textarea {
 }
 
 .grillas-semana__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   width: 100%;
   text-align: left;
   border: 1px solid var(--color-border);
+  border-left-width: 3px;
   background: rgba(255, 255, 255, 0.55);
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.5rem;

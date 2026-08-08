@@ -147,6 +147,7 @@ export async function PATCH(request: Request, { params }: Params) {
       nota?: string | null;
       tipoItinerario?: string;
       fecha?: string;
+      areaId?: string;
       transporteId?: string;
       choferId?: string;
       conCeladora?: boolean;
@@ -238,6 +239,26 @@ export async function PATCH(request: Request, { params }: Params) {
       );
     }
 
+    const nextAreaId =
+      body.areaId === undefined ? existing.areaId : body.areaId.trim();
+    if (!nextAreaId) {
+      return NextResponse.json({ message: 'Seleccioná una zona.' }, { status: 400 });
+    }
+    let areaNombre = existing.area.nombre;
+    if (nextAreaId !== existing.areaId) {
+      const area = await prisma.area.findUnique({
+        where: { id: nextAreaId },
+        select: { id: true, nombre: true, active: true },
+      });
+      if (!area || !area.active) {
+        return NextResponse.json(
+          { message: 'La zona seleccionada no existe o está inactiva.' },
+          { status: 400 },
+        );
+      }
+      areaNombre = area.nombre;
+    }
+
     if (body.transporteId !== undefined) {
       const transporte = await prisma.transporte.findUnique({ where: { id: transporteId } });
       if (!transporte) {
@@ -281,8 +302,8 @@ export async function PATCH(request: Request, { params }: Params) {
     const conflicts = await findResourceConflicts(prisma, {
       fecha: parseFechaDay(fecha),
       tipoItinerario,
-      areaId: existing.areaId,
-      areaNombre: existing.area.nombre,
+      areaId: nextAreaId,
+      areaNombre,
       excludeGrillaId: id,
       transporteId,
       choferId,
@@ -292,7 +313,7 @@ export async function PATCH(request: Request, { params }: Params) {
     });
 
     if (conflicts.length > 0 && !forceReassign) {
-      return NextResponse.json(conflictsResponseBody(conflicts, existing.area.nombre), {
+      return NextResponse.json(conflictsResponseBody(conflicts, areaNombre), {
         status: 409,
       });
     }
@@ -300,7 +321,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (conflicts.length > 0 && forceReassign) {
       const blocked = conflictsNotAutoResolvable(conflicts);
       if (blocked.length > 0) {
-        return NextResponse.json(conflictsResponseBody(conflicts, existing.area.nombre), {
+        return NextResponse.json(conflictsResponseBody(conflicts, areaNombre), {
           status: 409,
         });
       }
@@ -352,6 +373,7 @@ export async function PATCH(request: Request, { params }: Params) {
           nota: body.nota === undefined ? undefined : body.nota?.trim() || null,
           tipoItinerario,
           fecha,
+          areaId: nextAreaId,
           transporteId,
           choferId,
           conCeladora,

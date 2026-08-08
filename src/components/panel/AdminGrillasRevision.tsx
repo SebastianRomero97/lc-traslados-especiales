@@ -8,9 +8,10 @@ import { GrillaResumenPanel } from '@/components/panel/GrillaResumenPanel';
 import {
   GrillaTablero,
   type GrillaTableroInitial,
-  type GrillaTableroOptions,
 } from '@/components/panel/GrillaTablero';
 import { formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
+
+type AreaOption = { id: string; nombre: string };
 
 type GrillaItem = GrillaTableroInitial & {
   area: { id: string; nombre: string };
@@ -21,12 +22,12 @@ type GrillaItem = GrillaTableroInitial & {
 export function AdminGrillasRevision() {
   const popup = usePanelPopup();
   const [items, setItems] = useState<GrillaItem[]>([]);
+  const [areas, setAreas] = useState<AreaOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [notaDraft, setNotaDraft] = useState<Record<string, string>>({});
   const [cierreNotaDraft, setCierreNotaDraft] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<GrillaItem | null>(null);
-  const [options, setOptions] = useState<GrillaTableroOptions | null>(null);
   const [boardKey, setBoardKey] = useState(0);
 
   const load = useCallback(async () => {
@@ -47,9 +48,26 @@ export function AdminGrillasRevision() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadAreas = useCallback(async () => {
+    try {
+      const response = await fetch('/api/administracion/areas');
+      const body = await response.json();
+      if (!response.ok) return;
+      setAreas(
+        (body.data as { id: string; nombre: string }[]).map((a) => ({
+          id: a.id,
+          nombre: a.nombre,
+        })),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadAreas();
+  }, [load, loadAreas]);
 
   const revisionItems = useMemo(
     () => items.filter((i) => i.estado === 'EN_REVISION' || i.estado === 'OBSERVADA'),
@@ -107,23 +125,12 @@ export function AdminGrillasRevision() {
     await load();
   };
 
-  const openEditar = async (item: GrillaItem) => {
-    try {
-      const response = await fetch(`/api/administracion/grillas/options?areaId=${item.area.id}`);
-      const body = await response.json();
-      if (!response.ok) {
-        popup.error(body.message ?? 'No se pudieron cargar opciones.');
-        return;
-      }
-      setOptions(body.data as GrillaTableroOptions);
-      setEditing(item);
-      setBoardKey((k) => k + 1);
-    } catch {
-      popup.error('Error al preparar la edición.');
-    }
+  const openEditar = (item: GrillaItem) => {
+    setEditing(item);
+    setBoardKey((k) => k + 1);
   };
 
-  if (editing && options) {
+  if (editing) {
     return (
       <div className="admin-section">
         {popup.popupNode}
@@ -132,10 +139,7 @@ export function AdminGrillasRevision() {
             <button
               type="button"
               className="btn btn--outline btn--sm"
-              onClick={() => {
-                setEditing(null);
-                setOptions(null);
-              }}
+              onClick={() => setEditing(null)}
             >
               ← Volver a revisión
             </button>
@@ -147,25 +151,20 @@ export function AdminGrillasRevision() {
           </p>
           <GrillaTablero
             key={boardKey}
-            areaId={editing.area.id}
-            options={options}
+            areas={areas}
+            initialAreaId={editing.area.id}
             initial={editing}
             aprobarDespues
             allowDelete
             onSaved={async () => {
               setEditing(null);
-              setOptions(null);
               await load();
             }}
             onDeleted={async () => {
               setEditing(null);
-              setOptions(null);
               await load();
             }}
-            onCancel={() => {
-              setEditing(null);
-              setOptions(null);
-            }}
+            onCancel={() => setEditing(null)}
           />
         </section>
       </div>

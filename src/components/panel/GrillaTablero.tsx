@@ -131,6 +131,7 @@ export type GrillaTableroInitial = {
   celadoraHaceTrasbordo?: boolean;
   salidaDeBase?: boolean;
   retornoABase?: boolean;
+  area?: { id: string; nombre: string };
   transporte: { id: string; nombre: string; tipo: string };
   chofer: { id: string; username: string };
   celadora: { id: string; username: string } | null;
@@ -190,9 +191,22 @@ function fechaToInput(fecha: string): string {
   }
 }
 
+const HIBRIDA_VALUE = '__hibrida__';
+
+type AreaOption = { id: string; nombre: string };
+
+const EMPTY_OPTIONS: GrillaTableroOptions = {
+  transportes: [],
+  celadoras: [],
+  pasajeros: [],
+  destinos: [],
+  choferes: [],
+};
+
 type Props = {
-  areaId: string;
-  options: GrillaTableroOptions;
+  areas: AreaOption[];
+  /** Zona inicial (crear o editar). */
+  initialAreaId?: string;
   initial: GrillaTableroInitial | null;
   /** Fecha sugerida al crear (YYYY-MM-DD). */
   defaultFecha?: string;
@@ -208,8 +222,8 @@ type Props = {
 };
 
 export function GrillaTablero({
-  areaId,
-  options,
+  areas,
+  initialAreaId,
   initial,
   defaultFecha,
   defaultTipoItinerario,
@@ -221,6 +235,14 @@ export function GrillaTablero({
 }: Props) {
   const popup = usePanelPopup();
   const isNew = !initial?.id;
+
+  const resolvedInitialAreaId =
+    initial?.area?.id || initialAreaId || areas[0]?.id || '';
+
+  const [zonaMode, setZonaMode] = useState<'zona' | 'hibrida'>('zona');
+  const [areaId, setAreaId] = useState(resolvedInitialAreaId);
+  const [options, setOptions] = useState<GrillaTableroOptions | null>(null);
+  const [optionsLoading, setOptionsLoading] = useState(false);
 
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const initialSplit = splitTipoItinerario(
@@ -276,22 +298,10 @@ export function GrillaTablero({
     initial?.filas?.length
       ? initial.filas.map((f) => {
           const mapped = mapGrillaFilaToForm(f);
-          const destino = options.destinos.find((d) => d.id === mapped.destinoId);
-          const esBase = Boolean(destino && isBaseLcNombre(destino.nombre));
-          const accion = esBase
-            ? coerceAccionDestinoBaseLc(mapped.accion, initial?.tipoItinerario)
-            : mapped.accion;
           return {
             ...mapped,
-            accion,
             clientId: newClientId(),
             detalleManual: false,
-            pasajeroNombre: esBase
-              ? buildDetalleDestino({
-                  destinoNombre: destino?.nombre ?? mapped.pasajeroNombre,
-                  accion,
-                })
-              : mapped.pasajeroNombre,
           };
         })
       : [],
@@ -410,23 +420,98 @@ export function GrillaTablero({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reorderDragId]);
 
+  const opts = options ?? EMPTY_OPTIONS;
+  const skipPruneRef = useRef(true);
+
+  useEffect(() => {
+    if (!areaId) {
+      setOptions(null);
+      return;
+    }
+    let cancelled = false;
+    setOptionsLoading(true);
+    void (async () => {
+      try {
+        const params = new URLSearchParams({ areaId });
+        if (zonaMode === 'hibrida') params.set('hibrida', '1');
+        const response = await fetch(`/api/administracion/grillas/options?${params}`);
+        const body = await response.json();
+        if (cancelled) return;
+        if (!response.ok) {
+          popup.error(body.message ?? 'No se pudieron cargar los recursos de la zona.');
+          setOptions(null);
+          return;
+        }
+        setOptions(body.data as GrillaTableroOptions);
+      } catch {
+        if (!cancelled) {
+          popup.error('No se pudieron cargar los recursos de la zona.');
+          setOptions(null);
+        }
+      } finally {
+        if (!cancelled) setOptionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable
+  }, [areaId, zonaMode]);
+
+  useEffect(() => {
+    if (!options) return;
+    if (skipPruneRef.current) {
+      skipPruneRef.current = false;
+      // Ajuste inicial de destinos Base LC cuando llegan las opciones.
+      setFilas((prev) =>
+        prev.map((fila) => {
+          if (!fila.destinoId) return fila;
+          const destino = opts.destinos.find((d) => d.id === fila.destinoId);
+          if (!destino || !isBaseLcNombre(destino.nombre)) return fila;
+          const accion = coerceAccionDestinoBaseLc(fila.accion, tipoItinerario);
+          return {
+            ...fila,
+            accion,
+            pasajeroNombre: buildDetalleDestino({
+              destinoNombre: destino.nombre,
+              accion,
+            }),
+          };
+        }),
+      );
+      return;
+    }
+    // Al cambiar zona / modalidad: sacar recursos que ya no están en el catálogo.
+    setTransporteId((id) => (id && !opts.transportes.some((t) => t.id === id) ? '' : id));
+    setChoferId((id) => (id && !opts.choferes.some((c) => c.id === id) ? '' : id));
+    setCeladoraId((id) => (id && !opts.celadoras.some((c) => c.id === id) ? '' : id));
+    setFilas((prev) =>
+      prev.filter((fila) => {
+        if (fila.pasajeroId) return opts.pasajeros.some((p) => p.id === fila.pasajeroId);
+        if (fila.destinoId) return opts.destinos.some((d) => d.id === fila.destinoId);
+        return true;
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al refrescar options
+  }, [options]);
+
   const transporte = useMemo(
-    () => options.transportes.find((t) => t.id === transporteId) ?? null,
-    [options.transportes, transporteId],
+    () => opts.transportes.find((t) => t.id === transporteId) ?? null,
+    [opts.transportes, transporteId],
   );
   const chofer = useMemo(
     () =>
-      options.choferes.find((c) => c.id === choferId) ??
+      opts.choferes.find((c) => c.id === choferId) ??
       transporte?.choferes.find((c) => c.id === choferId) ??
       null,
-    [options.choferes, transporte, choferId],
+    [opts.choferes, transporte, choferId],
   );
   const celadora = useMemo(
     () =>
-      options.celadoras.find((c) => c.id === celadoraId) ??
+      opts.celadoras.find((c) => c.id === celadoraId) ??
       transporte?.celadoras.find((c) => c.id === celadoraId) ??
       null,
-    [options.celadoras, transporte, celadoraId],
+    [opts.celadoras, transporte, celadoraId],
   );
 
   const usedPasajeroIds = useMemo(
@@ -484,7 +569,7 @@ export function GrillaTablero({
     pasajeroIdsEnGrilla?: Iterable<string>,
   ): string[] => {
     const enGrilla = new Set(pasajeroIdsEnGrilla ?? usedPasajeroIds);
-    return options.pasajeros
+    return opts.pasajeros
       .filter((p) => (p.destinoIds ?? (p.destinoId ? [p.destinoId] : [])).includes(destinoId))
       .filter((p) => enGrilla.has(p.id))
       .map((p) => p.nombre);
@@ -509,7 +594,7 @@ export function GrillaTablero({
       let changed = false;
       const next = prev.map((fila) => {
         if (fila.tipoParada !== 'destino' || !fila.destinoId || fila.detalleManual) return fila;
-        const destino = options.destinos.find((d) => d.id === fila.destinoId);
+        const destino = opts.destinos.find((d) => d.id === fila.destinoId);
         if (!destino) return fila;
         if (isBaseLcNombre(destino.nombre) || isAccionBaseLc(fila.accion)) {
           const detalle = buildDetalleDestino({
@@ -532,7 +617,7 @@ export function GrillaTablero({
       return changed ? next : prev;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- depende de los pasajeros presentes
-  }, [pasajerosEnGrillaKey, options.destinos, options.pasajeros]);
+  }, [pasajerosEnGrillaKey, opts.destinos, opts.pasajeros]);
 
   useEffect(() => {
     if (!celadoraId) {
@@ -583,11 +668,11 @@ export function GrillaTablero({
 
   const assignVehiculo = (id: string) => {
     setTransporteId(id);
-    const t = options.transportes.find((x) => x.id === id);
+    const t = opts.transportes.find((x) => x.id === id);
     if (t && !choferId) {
       const preferred =
         t.choferes[0]?.id ||
-        options.choferes.find((c) => c.transporteId === id)?.id ||
+        opts.choferes.find((c) => c.transporteId === id)?.id ||
         '';
       if (preferred) setChoferId(preferred);
     }
@@ -609,7 +694,7 @@ export function GrillaTablero({
 
   const addPasajeroFila = (pasajeroId: string) => {
     if (usedPasajeroIds.has(pasajeroId)) return;
-    const p = options.pasajeros.find((x) => x.id === pasajeroId);
+    const p = opts.pasajeros.find((x) => x.id === pasajeroId);
     if (!p) return;
     const accion = accionPorTipoParada('pasajero', tipoItinerario);
     setFilas((prev) => [
@@ -633,7 +718,7 @@ export function GrillaTablero({
   };
 
   const addDestinoFila = (destinoId: string) => {
-    const d = options.destinos.find((x) => x.id === destinoId);
+    const d = opts.destinos.find((x) => x.id === destinoId);
     if (!d) return;
     const esBase = isBaseLcNombre(d.nombre);
     const accion = esBase
@@ -705,7 +790,7 @@ export function GrillaTablero({
         const accion = invertirAccionSubeBaja(fila.accion);
         if (fila.tipoParada === 'destino' && fila.destinoId) {
           if (fila.detalleManual) return { ...fila, accion };
-          const destino = options.destinos.find((d) => d.id === fila.destinoId);
+          const destino = opts.destinos.find((d) => d.id === fila.destinoId);
           return {
             ...fila,
             accion,
@@ -1138,11 +1223,11 @@ export function GrillaTablero({
   };
 
   const recursoSections: { key: RecursoTipo; label: string; count: number }[] = [
-    { key: 'vehiculos', label: 'Vehículos', count: options.transportes.length },
-    { key: 'choferes', label: 'Choferes', count: options.choferes.length },
-    { key: 'celadoras', label: 'Celadoras', count: options.celadoras.length },
-    { key: 'pasajeros', label: 'Pasajeros', count: options.pasajeros.length },
-    { key: 'destinos', label: 'Destinos', count: options.destinos.length },
+    { key: 'vehiculos', label: 'Vehículos', count: opts.transportes.length },
+    { key: 'choferes', label: 'Choferes', count: opts.choferes.length },
+    { key: 'celadoras', label: 'Celadoras', count: opts.celadoras.length },
+    { key: 'pasajeros', label: 'Pasajeros', count: opts.pasajeros.length },
+    { key: 'destinos', label: 'Destinos', count: opts.destinos.length },
   ];
 
   const recursoZonaBadge = (zonaNombre?: string, esZonaActual?: boolean) => {
@@ -1158,7 +1243,7 @@ export function GrillaTablero({
 
   const renderRecursoCards = (section: RecursoTipo) => {
     if (section === 'vehiculos') {
-      return options.transportes.filter((t) => matchRecursoName(t.nombre)).map((t) => {
+      return opts.transportes.filter((t) => matchRecursoName(t.nombre)).map((t) => {
         const used = t.id === transporteId;
         return (
           <div
@@ -1185,7 +1270,7 @@ export function GrillaTablero({
       });
     }
     if (section === 'choferes') {
-      return options.choferes.filter((c) => matchRecursoName(c.username)).map((c) => {
+      return opts.choferes.filter((c) => matchRecursoName(c.username)).map((c) => {
         const used = c.id === choferId;
         return (
           <div
@@ -1211,7 +1296,7 @@ export function GrillaTablero({
       });
     }
     if (section === 'celadoras') {
-      return options.celadoras.filter((c) => matchRecursoName(c.username)).map((c) => {
+      return opts.celadoras.filter((c) => matchRecursoName(c.username)).map((c) => {
         const used = c.id === celadoraId;
         return (
           <div
@@ -1237,7 +1322,7 @@ export function GrillaTablero({
       });
     }
     if (section === 'pasajeros') {
-      return options.pasajeros.filter((p) => matchRecursoName(p.nombre)).map((p) => {
+      return opts.pasajeros.filter((p) => matchRecursoName(p.nombre)).map((p) => {
         const used = usedPasajeroIds.has(p.id);
         return (
           <div
@@ -1263,7 +1348,7 @@ export function GrillaTablero({
         );
       });
     }
-    return options.destinos.filter((d) => matchRecursoName(d.nombre)).map((d) => (
+    return opts.destinos.filter((d) => matchRecursoName(d.nombre)).map((d) => (
       <div
         key={d.id}
         className={`grilla-recurso-card${d.esZonaActual === false ? ' is-otra-zona' : ''}`}
@@ -1287,8 +1372,9 @@ export function GrillaTablero({
         <div>
           <h2>{isNew ? 'Nueva grilla' : 'Editar grilla'}</h2>
           <p className="panel-card__desc">
-            Arrastrá recursos desde la izquierda hacia la grilla (incluye otras zonas, etiquetadas).
-            El orden de las paradas es el del arrastre; después podés reordenarlas.
+            Elegí la zona (o Híbrida para recursos de todas), luego armá el recorrido
+            arrastrando desde la izquierda. El orden de las paradas es el del arrastre;
+            después podés reordenarlas.
           </p>
         </div>
         <div className="grilla-tablero__header-actions">
@@ -1318,7 +1404,7 @@ export function GrillaTablero({
             type="button"
             className="btn btn--primary btn--sm"
             onClick={() => void handleSave()}
-            disabled={submitting}
+            disabled={submitting || !areaId || optionsLoading}
           >
             {submitting ? 'Guardando...' : 'Guardar grilla'}
           </button>
@@ -1326,6 +1412,53 @@ export function GrillaTablero({
       </div>
 
       <div className="grilla-tablero__meta">
+        <div className="form-group">
+          <label htmlFor="tb-zona">Zona</label>
+          <select
+            id="tb-zona"
+            value={zonaMode === 'hibrida' ? HIBRIDA_VALUE : areaId}
+            onChange={(e) => {
+              const value = e.target.value;
+              skipPruneRef.current = false;
+              if (value === HIBRIDA_VALUE) {
+                setZonaMode('hibrida');
+                if (!areaId && areas[0]) setAreaId(areas[0].id);
+              } else {
+                setZonaMode('zona');
+                setAreaId(value);
+              }
+            }}
+            required
+          >
+            {areas.length === 0 && <option value="">Sin zonas</option>}
+            {areas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nombre}
+              </option>
+            ))}
+            {areas.length > 1 && <option value={HIBRIDA_VALUE}>Híbrida</option>}
+          </select>
+        </div>
+        {zonaMode === 'hibrida' && (
+          <div className="form-group">
+            <label htmlFor="tb-zona-principal">Zona principal</label>
+            <select
+              id="tb-zona-principal"
+              value={areaId}
+              onChange={(e) => {
+                skipPruneRef.current = false;
+                setAreaId(e.target.value);
+              }}
+              required
+            >
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="form-group">
           <label htmlFor="tb-nombre">Nombre</label>
           <input
@@ -1397,7 +1530,7 @@ export function GrillaTablero({
             <button
               type="button"
               className="btn btn--outline"
-              disabled={submitting}
+              disabled={submitting || !areaId}
               onClick={() => void cargarSalidaDesdeIngreso()}
             >
               Cargar desde Ingresos
@@ -1415,9 +1548,20 @@ export function GrillaTablero({
         </div>
       </div>
 
+      {optionsLoading && (
+        <p className="panel-card__desc">Cargando recursos de la zona…</p>
+      )}
+      {!optionsLoading && !options && areaId && (
+        <p className="panel-card__desc">No se pudieron cargar los recursos. Probá otra zona.</p>
+      )}
+
       <div className="grilla-tablero__layout">
         <aside className="grilla-tablero__recursos">
-          <h3>Recursos</h3>
+          {zonaMode === 'hibrida' && (
+            <p className="panel-card__desc" style={{ marginTop: 0 }}>
+              Modo híbrido: recursos de todas las zonas (etiquetados).
+            </p>
+          )}          <h3>Recursos</h3>
           <p className="grilla-tablero__hint">Elegí un tipo, arrastrá y cerrá el listado.</p>
           {recursoSections.map((section) => (
             <div key={section.key} className="grilla-recurso-acc">
@@ -1774,7 +1918,7 @@ export function GrillaTablero({
                     <select
                       value={
                         (() => {
-                          const destino = options.destinos.find((d) => d.id === fila.destinoId);
+                          const destino = opts.destinos.find((d) => d.id === fila.destinoId);
                           const esBase =
                             fila.tipoParada === 'destino' &&
                             Boolean(destino && isBaseLcNombre(destino.nombre));
@@ -1795,7 +1939,7 @@ export function GrillaTablero({
                               !f.detalleManual &&
                               accion !== 'TRASBORDO'
                             ) {
-                              const destino = options.destinos.find((d) => d.id === f.destinoId);
+                              const destino = opts.destinos.find((d) => d.id === f.destinoId);
                               return {
                                 ...f,
                                 accion,
@@ -1820,7 +1964,7 @@ export function GrillaTablero({
                       }}
                     >
                       {(() => {
-                        const destino = options.destinos.find((d) => d.id === fila.destinoId);
+                        const destino = opts.destinos.find((d) => d.id === fila.destinoId);
                         const esBase =
                           fila.tipoParada === 'destino' &&
                           Boolean(destino && isBaseLcNombre(destino.nombre));

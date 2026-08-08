@@ -381,6 +381,28 @@ export const TIPO_GRUPO_COLOR: Record<TipoGrupoItinerario, string> = {
   especial: '#7c3aed',
 };
 
+/** Paleta estable para diferenciar zonas en listados / calendario. */
+export const AREA_COLOR_PALETTE = [
+  '#0d9488',
+  '#c2410c',
+  '#1d4ed8',
+  '#a16207',
+  '#be123c',
+  '#4338ca',
+  '#15803d',
+  '#9a3412',
+] as const;
+
+/** Color de identidad visual de una zona según su orden en el listado. */
+export function colorForAreaId(
+  areaId: string,
+  areas: { id: string }[],
+): string {
+  const idx = areas.findIndex((a) => a.id === areaId);
+  const i = idx >= 0 ? idx : 0;
+  return AREA_COLOR_PALETTE[i % AREA_COLOR_PALETTE.length]!;
+}
+
 export function isTipoGrupoItinerario(value: string): value is TipoGrupoItinerario {
   return (TIPOS_GRUPO as string[]).includes(value);
 }

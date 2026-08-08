@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { readApiError } from '@/lib/api-errors';
 import {
   buildGrillaTitulo,
+  colorForAreaId,
   daysInMonth,
   fechaGrillaKey,
   formatAccionFila,
@@ -14,14 +15,9 @@ import {
   mondayOfWeek,
   monthStartKey,
   shiftWeekMonday,
-  tipoDefaultDeGrupo,
-  TIPOS_GRUPO,
-  TIPO_GRUPO_COLOR,
-  TIPO_GRUPO_LABEL,
   todayFechaInput,
   weekdaysMonFri,
   type AccionParada,
-  type TipoGrupoItinerario,
 } from '@/lib/grilla.utils';
 import {
   buildGrillaWhatsAppShareText,
@@ -40,7 +36,6 @@ import { usePanelPopup } from '@/components/panel/PanelPopup';
 import {
   GrillaTablero,
   type GrillaTableroInitial,
-  type GrillaTableroOptions,
 } from '@/components/panel/GrillaTablero';
 
 type AreaOption = { id: string; nombre: string };
@@ -68,9 +63,9 @@ export function AdministracionGrillasManager({
   const esHistorial = modo === 'historial';
 
   const [areas, setAreas] = useState<AreaOption[]>([]);
-  const [areaId, setAreaId] = useState('');
+  /** Filtro solo para Historial: '' = todas. */
+  const [filtroAreaId, setFiltroAreaId] = useState('');
   const [grillas, setGrillas] = useState<GrillaListItem[]>([]);
-  const [options, setOptions] = useState<GrillaTableroOptions | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [boardMode, setBoardMode] = useState<'cerrado' | 'nueva' | 'editar'>('cerrado');
   const [boardInitial, setBoardInitial] = useState<GrillaTableroInitial | null>(null);
@@ -81,7 +76,6 @@ export function AdministracionGrillasManager({
   const [historialDetalle, setHistorialDetalle] = useState<GrillaPrintInput | null>(null);
   const [historialDetalleLoading, setHistorialDetalleLoading] = useState(false);
   const [periodo, setPeriodo] = useState<PeriodoVista>('hoy');
-  const [tipoGrupo, setTipoGrupo] = useState<TipoGrupoItinerario>('ingreso');
   const [weekMonday, setWeekMonday] = useState(() => mondayOfWeek(todayFechaInput()));
   const now = new Date();
   const [monthYear, setMonthYear] = useState(now.getFullYear());
@@ -89,7 +83,6 @@ export function AdministracionGrillasManager({
   const [mesDiaSeleccionado, setMesDiaSeleccionado] = useState<string | null>(null);
 
   const hoy = todayFechaInput();
-  const borderColor = TIPO_GRUPO_COLOR[tipoGrupo];
 
   const rangeForLoad = useMemo(() => {
     if (esHistorial) return { from: undefined as string | undefined, to: undefined as string | undefined };
@@ -113,18 +106,16 @@ export function AdministracionGrillasManager({
       nombre: a.nombre,
     }));
     setAreas(list);
-    setAreaId((current) => current || list[0]?.id || '');
   }, []);
 
   const loadGrillas = useCallback(
-    async (selectedArea: string) => {
+    async () => {
       const params = new URLSearchParams();
-      if (selectedArea) params.set('areaId', selectedArea);
+      if (esHistorial && filtroAreaId) params.set('areaId', filtroAreaId);
       params.set('vista', esHistorial ? 'historial' : 'activas');
       if (!esHistorial) {
         if (rangeForLoad.from) params.set('from', rangeForLoad.from);
         if (rangeForLoad.to) params.set('to', rangeForLoad.to);
-        params.set('tipoGrupo', tipoGrupo);
       }
       const qs = params.toString();
       const response = await fetch(`/api/administracion/grillas${qs ? `?${qs}` : ''}`);
@@ -136,25 +127,7 @@ export function AdministracionGrillasManager({
       setGrillas(body.data as GrillaListItem[]);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable
-    [esHistorial, rangeForLoad.from, rangeForLoad.to, tipoGrupo],
-  );
-
-  const loadOptions = useCallback(
-    async (selectedArea: string) => {
-      if (!selectedArea) {
-        setOptions(null);
-        return;
-      }
-      const response = await fetch(`/api/administracion/grillas/options?areaId=${selectedArea}`);
-      const body = await response.json();
-      if (!response.ok) {
-        popup.error(body.message ?? 'No se pudieron cargar opciones.');
-        return;
-      }
-      setOptions(body.data as GrillaTableroOptions);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- popup estable
-    [],
+    [esHistorial, filtroAreaId, rangeForLoad.from, rangeForLoad.to],
   );
 
   useEffect(() => {
@@ -162,10 +135,13 @@ export function AdministracionGrillasManager({
   }, [loadAreas]);
 
   useEffect(() => {
-    if (!areaId) return;
-    void loadGrillas(areaId);
-    if (!esHistorial) void loadOptions(areaId);
-  }, [areaId, esHistorial, loadGrillas, loadOptions]);
+    void loadGrillas();
+  }, [loadGrillas]);
+
+  const areaColor = useCallback(
+    (areaId: string) => colorForAreaId(areaId, areas),
+    [areas],
+  );
 
   const grillasVisibles = useMemo(() => {
     if (esHistorial) return grillas;
@@ -223,7 +199,7 @@ export function AdministracionGrillasManager({
         popup.error(await readApiError(response, 'No se pudo pasar a borrador.'));
         return;
       }
-      await loadGrillas(areaId);
+      await loadGrillas();
       grilla = { ...grilla, estado: 'BORRADOR' };
     }
 
@@ -245,7 +221,7 @@ export function AdministracionGrillasManager({
     }
     const body = (await response.json()) as { message?: string };
     popup.success(body.message ?? 'Enviada a revisión.');
-    await loadGrillas(areaId);
+    await loadGrillas();
   };
 
   const closeBoard = () => {
@@ -255,13 +231,13 @@ export function AdministracionGrillasManager({
 
   const afterSaved = async () => {
     closeBoard();
-    await loadGrillas(areaId);
+    await loadGrillas();
   };
 
   const afterDeleted = async () => {
     closeBoard();
     setSelectedId(null);
-    await loadGrillas(areaId);
+    await loadGrillas();
   };
 
   const applyGrillaBase = (grilla: GrillaListItem) => {
@@ -287,6 +263,7 @@ export function AdministracionGrillasManager({
       celadoraHaceTrasbordo: Boolean(grilla.celadoraHaceTrasbordo),
       salidaDeBase: Boolean(grilla.salidaDeBase),
       retornoABase: Boolean(grilla.retornoABase),
+      area: grilla.area,
       transporte: grilla.transporte,
       chofer: grilla.chofer,
       celadora: grilla.celadora,
@@ -315,6 +292,7 @@ export function AdministracionGrillasManager({
         celadoraHaceTrasbordo: Boolean(grilla.celadoraHaceTrasbordo),
         salidaDeBase: Boolean(grilla.salidaDeBase),
         retornoABase: Boolean(grilla.retornoABase),
+        area: grilla.area,
         transporte: grilla.transporte,
         chofer: grilla.chofer,
         celadora: grilla.celadora,
@@ -342,7 +320,7 @@ export function AdministracionGrillasManager({
     }
     const body = (await response.json()) as { message?: string };
     popup.success(body.message ?? 'Estado actualizado.');
-    await loadGrillas(areaId);
+    await loadGrillas();
   };
 
   const handleDelete = async (id: string, nombre?: string) => {
@@ -358,7 +336,7 @@ export function AdministracionGrillasManager({
     }
     popup.success('Grilla eliminada.');
     if (selectedId === id) setSelectedId(null);
-    await loadGrillas(areaId);
+    await loadGrillas();
   };
 
   const toPrintInput = (grilla: {
@@ -589,6 +567,7 @@ export function AdministracionGrillasManager({
             <thead>
               <tr>
                 <th>Nombre</th>
+                <th>Zona</th>
                 <th>Estado</th>
                 <th>Fecha</th>
                 <th>Itinerario</th>
@@ -607,6 +586,14 @@ export function AdministracionGrillasManager({
                         Corregir: {g.notaRevision}
                       </p>
                     ) : null}
+                  </td>
+                  <td>
+                    <span
+                      className="grillas-zona-badge"
+                      style={{ '--zona-color': areaColor(g.area.id) } as CSSProperties}
+                    >
+                      {g.area.nombre}
+                    </span>
                   </td>
                   <td>
                     <GrillaEstadoChip estado={g.estado} />
@@ -703,16 +690,20 @@ export function AdministracionGrillasManager({
       </section>
     ) : null;
 
-  if (!esHistorial && boardMode !== 'cerrado' && options) {
+  if (!esHistorial && boardMode !== 'cerrado') {
+    const boardAreaId =
+      boardMode === 'editar' && boardInitial && 'area' in boardInitial && boardInitial.area
+        ? boardInitial.area.id
+        : boardInitial?.area?.id || areas[0]?.id || '';
     return (
       <div className="adm-grillas">
         {popup.popupNode}
         <GrillaTablero
           key={boardKey}
-          areaId={areaId}
-          options={options}
+          areas={areas}
+          initialAreaId={boardAreaId}
           defaultFecha={createFecha}
-          defaultTipoItinerario={tipoDefaultDeGrupo(tipoGrupo)}
+          defaultTipoItinerario="INGRESO"
           initial={
             boardMode === 'editar' && boardInitial?.id
               ? boardInitial
@@ -748,12 +739,13 @@ export function AdministracionGrillasManager({
             <label htmlFor="g-area-hist">Zona</label>
             <select
               id="g-area-hist"
-              value={areaId}
+              value={filtroAreaId}
               onChange={(e) => {
                 setSelectedId(null);
-                setAreaId(e.target.value);
+                setFiltroAreaId(e.target.value);
               }}
             >
+              <option value="">Todas</option>
               {areas.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}
@@ -761,7 +753,7 @@ export function AdministracionGrillasManager({
               ))}
             </select>
           </div>
-          {renderListaDetalle(grillasVisibles, 'Todavía no hay grillas finalizadas en esta zona.')}
+          {renderListaDetalle(grillasVisibles, 'Todavía no hay grillas finalizadas.')}
         </section>
         {renderPreview()}
       </div>
@@ -791,31 +783,8 @@ export function AdministracionGrillasManager({
   return (
     <div className="adm-grillas">
       {popup.popupNode}
-      <div className="admin-tabs-shell">
-        <div className="admin-tabs" role="tablist" aria-label="Zonas">
-          {areas.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              role="tab"
-              aria-selected={areaId === a.id}
-              className={`admin-tabs__btn${areaId === a.id ? ' is-active' : ''}`}
-              onClick={() => {
-                setSelectedId(null);
-                setMesDiaSeleccionado(null);
-                setAreaId(a.id);
-              }}
-            >
-              {a.nombre}
-            </button>
-          ))}
-        </div>
-      </div>
 
-      <section
-        className="panel-card grillas-periodo"
-        style={{ borderColor: borderColor, borderWidth: 2, borderStyle: 'solid' }}
-      >
+      <section className="panel-card grillas-periodo">
         <div className="grillas-periodo__toolbar">
           <nav className="panel-segment" aria-label="Periodo">
             {(
@@ -839,27 +808,6 @@ export function AdministracionGrillasManager({
               </button>
             ))}
           </nav>
-
-          <div className="grillas-tipo-chips" role="group" aria-label="Tipo de itinerario">
-            {TIPOS_GRUPO.map((g) => (
-              <button
-                key={g}
-                type="button"
-                className={`grillas-tipo-chip${tipoGrupo === g ? ' is-active' : ''}`}
-                  style={
-                    {
-                      '--chip-color': TIPO_GRUPO_COLOR[g],
-                    } as CSSProperties
-                  }
-                onClick={() => {
-                  setTipoGrupo(g);
-                  setSelectedId(null);
-                }}
-              >
-                {TIPO_GRUPO_LABEL[g]}
-              </button>
-            ))}
-          </div>
         </div>
 
         {periodo === 'hoy' && (
@@ -868,19 +816,19 @@ export function AdministracionGrillasManager({
               <div>
                 <h2>Hoy — {formatFechaGrilla(hoy)}</h2>
                 <p className="panel-card__desc">
-                  Grillas de {TIPO_GRUPO_LABEL[tipoGrupo].toLowerCase()} para el día actual.
+                  Grillas activas del día actual.
                 </p>
               </div>
               <button
                 type="button"
                 className="btn btn--primary"
-                disabled={!areaId || !options}
+                disabled={areas.length === 0}
                 onClick={() => openNueva(hoy)}
               >
                 Crear
               </button>
             </div>
-            {renderListaDetalle(grillasHoy, 'No hay grillas para hoy con este filtro.')}
+            {renderListaDetalle(grillasHoy, 'No hay grillas para hoy.')}
           </div>
         )}
 
@@ -919,7 +867,7 @@ export function AdministracionGrillasManager({
                     <button
                       type="button"
                       className="btn btn--primary btn--sm"
-                      disabled={!areaId || !options}
+                      disabled={areas.length === 0}
                       onClick={() => openNueva(dayKey)}
                     >
                       Crear
@@ -933,10 +881,20 @@ export function AdministracionGrillasManager({
                             <button
                               type="button"
                               className={`grillas-semana__name${selectedId === g.id ? ' is-active' : ''}`}
+                              style={
+                                {
+                                  borderLeftColor: areaColor(g.area.id),
+                                } as CSSProperties
+                              }
                               onClick={() =>
                                 setSelectedId((cur) => (cur === g.id ? null : g.id))
                               }
                             >
+                              <span
+                                className="grillas-zona-dot"
+                                style={{ background: areaColor(g.area.id) }}
+                                title={g.area.nombre}
+                              />
                               {g.nombre || 'Sin nombre'}
                             </button>
                             <div style={{ marginTop: '0.25rem' }}>
@@ -981,7 +939,7 @@ export function AdministracionGrillasManager({
                   <button
                     type="button"
                     className="btn btn--primary"
-                    disabled={!areaId || !options}
+                    disabled={areas.length === 0}
                     onClick={() => openNueva(mesDiaSeleccionado)}
                   >
                     Crear
@@ -989,7 +947,7 @@ export function AdministracionGrillasManager({
                 </div>
                 {renderListaDetalle(
                   grillasPorDia(mesDiaSeleccionado),
-                  'No hay grillas para este día con este filtro.',
+                  'No hay grillas para este día.',
                 )}
               </>
             ) : (
@@ -1013,6 +971,19 @@ export function AdministracionGrillasManager({
                     →
                   </button>
                 </div>
+                {areas.length > 0 && (
+                  <div className="grillas-zona-legend" aria-label="Leyenda de zonas">
+                    {areas.map((a) => (
+                      <span key={a.id} className="grillas-zona-legend__item">
+                        <span
+                          className="grillas-zona-dot"
+                          style={{ background: areaColor(a.id) }}
+                        />
+                        {a.nombre}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="grillas-mes__weekdays" aria-hidden="true">
                   {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
                     <span key={d}>{d}</span>
@@ -1033,6 +1004,17 @@ export function AdministracionGrillasManager({
                         <span className="grillas-mes__date">{cell.day}</span>
                         <span className="grillas-mes__count">
                           Grillas {grillasPorDia(cell.key).length}
+                        </span>
+                        <span className="grillas-mes__zona-dots">
+                          {[
+                            ...new Set(grillasPorDia(cell.key).map((g) => g.area.id)),
+                          ].map((zid) => (
+                            <span
+                              key={zid}
+                              className="grillas-zona-dot"
+                              style={{ background: areaColor(zid) }}
+                            />
+                          ))}
                         </span>
                       </button>
                     ) : (

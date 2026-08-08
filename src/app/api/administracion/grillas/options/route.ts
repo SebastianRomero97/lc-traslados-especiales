@@ -4,12 +4,19 @@ import { requireAdministracionApi } from '@/lib/administracion-auth';
 
 type ZonaMeta = { zonaId: string; zonaNombre: string; esZonaActual: boolean };
 
-/** Opciones para armar una grilla: zona activa + recursos de otras zonas (etiquetados). */
+/** Opciones para armar una grilla.
+ * - Sin hibrida: solo recursos de la zona (areaId).
+ * - Con hibrida=1: zona principal + recursos de las demás (etiquetados).
+ */
 export async function GET(request: Request) {
   const auth = await requireAdministracionApi();
   if ('error' in auth) return auth.error;
 
-  const areaId = new URL(request.url).searchParams.get('areaId')?.trim();
+  const searchParams = new URL(request.url).searchParams;
+  const areaId = searchParams.get('areaId')?.trim();
+  const hibrida =
+    searchParams.get('hibrida') === '1' ||
+    searchParams.get('hibrida') === 'true';
   if (!areaId) {
     return NextResponse.json({ message: 'Indicá areaId.' }, { status: 400 });
   }
@@ -134,8 +141,10 @@ export async function GET(request: Request) {
     }
   };
 
-  // Zona actual primero, luego el resto (así preferCurrent deja la etiqueta correcta).
-  const ordered = [current, ...areas.filter((a) => a.id !== areaId)];
+  // Zona principal primero; en modo híbrido se suman el resto de zonas.
+  const ordered = hibrida
+    ? [current, ...areas.filter((a) => a.id !== areaId)]
+    : [current];
 
   for (const area of ordered) {
     const meta = zonaMeta(area.id, area.nombre);
