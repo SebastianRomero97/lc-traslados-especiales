@@ -1,6 +1,6 @@
 'use client';
 
-import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import dynamic from 'next/dynamic';
 import { missingFieldsMessage, readApiError } from '@/lib/api-errors';
 import {
@@ -24,7 +24,11 @@ import {
 } from '@/lib/grilla.utils';
 import { isBaseLcNombre } from '@/lib/base-lc.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
-import type { MapaParada } from '@/lib/osm-maps';
+import {
+  geocodeParadas,
+  osrmTravelGapsMinutes,
+  type MapaParada,
+} from '@/lib/osm-maps';
 
 const GrillaMapa = dynamic(
   () => import('@/components/panel/GrillaMapa').then((m) => m.GrillaMapa),
@@ -998,7 +1002,7 @@ export function GrillaTablero({
     }
   };
 
-  const handleSugerirHorarios = () => {
+  const handleSugerirHorarios = async () => {
     const tieneAncla = filas.some((f) => f.destinoId && f.hora.trim());
     if (!tieneAncla) {
       popup.error(
@@ -1006,21 +1010,67 @@ export function GrillaTablero({
       );
       return;
     }
-    const sugeridas = sugerirHorariosHaciaAtras(
-      filas.map((f) => ({ hora: f.hora || null, destinoId: f.destinoId || null })),
-      15,
-    );
-    const next = filas.map((f, i) => {
-      if (f.hora.trim() || !sugeridas[i]) return f;
-      return { ...f, hora: sugeridas[i]! };
-    });
-    const aplicadas = next.filter((f, i) => f.hora !== filas[i]?.hora).length;
-    if (aplicadas === 0) {
-      popup.error('No había paradas sin horario para completar.');
-      return;
+
+    setSubmitting(true);
+    try {
+      const { ubicadas } = await geocodeParadas(
+        filas
+          .filter((f) => f.direccion.trim())
+          .map((f) => ({
+            clientId: f.clientId,
+            label: f.pasajeroNombre || f.direccion,
+            direccion: f.direccion,
+            lat: f.lat,
+            lon: f.lon,
+          })),
+      );
+      const coordsById = new Map(ubicadas.map((u) => [u.clientId, u.coords]));
+
+      const filasConCoords = filas.map((f) => {
+        const coords = coordsById.get(f.clientId);
+        if (!coords) return f;
+        if (f.lat === coords.lat && f.lon === coords.lon) return f;
+        return { ...f, lat: coords.lat, lon: coords.lon };
+      });
+
+      const coordsList = filasConCoords.map((f) =>
+        typeof f.lat === 'number' &&
+        typeof f.lon === 'number' &&
+        Number.isFinite(f.lat) &&
+        Number.isFinite(f.lon)
+          ? { lat: f.lat, lon: f.lon }
+          : null,
+      );
+
+      const gaps = await osrmTravelGapsMinutes(coordsList);
+      const usadosOsrm = gaps.filter((g) => g != null).length;
+
+      const sugeridas = sugerirHorariosHaciaAtras(
+        filasConCoords.map((f) => ({ hora: f.hora || null, destinoId: f.destinoId || null })),
+        15,
+        gaps,
+      );
+      const next = filasConCoords.map((f, i) => {
+        if (f.hora.trim() || !sugeridas[i]) return f;
+        return { ...f, hora: sugeridas[i]! };
+      });
+      const aplicadas = next.filter((f, i) => f.hora !== filas[i]?.hora).length;
+      if (aplicadas === 0) {
+        popup.error('No había paradas sin horario para completar.');
+        setFilas(filasConCoords);
+        return;
+      }
+      setFilas(next);
+      popup.success(
+        usadosOsrm > 0
+          ? `Se sugirieron ${aplicadas} horario(s) según tiempo de viaje. Donde faltó ruta, se usó 15 min.`
+          : `Se sugirieron ${aplicadas} horario(s) con 15 min (no hubo ruta entre paradas).`,
+      );
+    } catch {
+      popup.error('No se pudieron calcular los tiempos de viaje. Probá de nuevo.');
+    } finally {
+      setSubmitting(false);
     }
-    setFilas(next);
-    popup.success(`Se sugirieron ${aplicadas} horario(s) hacia atrás (15 min entre paradas).`);
   };
 
   const handleSave = async () => {
@@ -1241,26 +1291,60 @@ export function GrillaTablero({
     );
   };
 
+  const suppressRecursoClickRef = useRef(false);
+
+  const onRecursoCardClick = (
+    action: () => void,
+    opts?: { disabled?: boolean },
+  ) => {
+    if (opts?.disabled) return;
+    if (suppressRecursoClickRef.current) {
+      suppressRecursoClickRef.current = false;
+      return;
+    }
+    action();
+  };
+
+  const recursoDragHandlers = (kind: DragPayload['kind'], id: string, disabled?: boolean) => ({
+    draggable: !disabled,
+    onDragStart: (e: DragEvent) => {
+      if (disabled) {
+        e.preventDefault();
+        return;
+      }
+      suppressRecursoClickRef.current = false;
+      setDragPayload(e, { kind, id });
+      setDraggingKind(kind);
+    },
+    onDragEnd: () => {
+      suppressRecursoClickRef.current = true;
+      setDraggingKind(null);
+    },
+  });
+
   const renderRecursoCards = (section: RecursoTipo) => {
     if (section === 'vehiculos') {
       return opts.transportes.filter((t) => matchRecursoName(t.nombre)).map((t) => {
-        const used = t.id === transporteId;
+        const selected = t.id === transporteId;
         return (
           <div
             key={t.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+            role="button"
+            tabIndex={0}
+            className={`grilla-recurso-card${selected ? ' is-selected' : ''}${
               t.esZonaActual === false ? ' is-otra-zona' : ''
             }`}
-            draggable={!used}
-            onDragStart={(e) => {
-              if (used) {
+            title={selected ? 'Vehículo asignado' : 'Click o arrastrá para asignar'}
+            {...recursoDragHandlers('vehiculo', t.id)}
+            onClick={() =>
+              onRecursoCardClick(() => assignVehiculo(t.id), { disabled: selected })
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                return;
+                onRecursoCardClick(() => assignVehiculo(t.id), { disabled: selected });
               }
-              setDragPayload(e, { kind: 'vehiculo', id: t.id });
-              setDraggingKind('vehiculo');
             }}
-            onDragEnd={() => setDraggingKind(null)}
           >
             <strong>{t.nombre}</strong>
             <small>{t.tipo}</small>
@@ -1271,23 +1355,26 @@ export function GrillaTablero({
     }
     if (section === 'choferes') {
       return opts.choferes.filter((c) => matchRecursoName(c.username)).map((c) => {
-        const used = c.id === choferId;
+        const selected = c.id === choferId;
         return (
           <div
             key={c.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+            role="button"
+            tabIndex={0}
+            className={`grilla-recurso-card${selected ? ' is-selected' : ''}${
               c.esZonaActual === false ? ' is-otra-zona' : ''
             }`}
-            draggable={!used}
-            onDragStart={(e) => {
-              if (used) {
+            title={selected ? 'Chofer asignado' : 'Click o arrastrá para asignar'}
+            {...recursoDragHandlers('chofer', c.id)}
+            onClick={() =>
+              onRecursoCardClick(() => setChoferId(c.id), { disabled: selected })
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                return;
+                onRecursoCardClick(() => setChoferId(c.id), { disabled: selected });
               }
-              setDragPayload(e, { kind: 'chofer', id: c.id });
-              setDraggingKind('chofer');
             }}
-            onDragEnd={() => setDraggingKind(null)}
           >
             <strong>{c.username}</strong>
             {recursoZonaBadge(c.zonaNombre, c.esZonaActual)}
@@ -1297,23 +1384,26 @@ export function GrillaTablero({
     }
     if (section === 'celadoras') {
       return opts.celadoras.filter((c) => matchRecursoName(c.username)).map((c) => {
-        const used = c.id === celadoraId;
+        const selected = c.id === celadoraId;
         return (
           <div
             key={c.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+            role="button"
+            tabIndex={0}
+            className={`grilla-recurso-card${selected ? ' is-selected' : ''}${
               c.esZonaActual === false ? ' is-otra-zona' : ''
             }`}
-            draggable={!used}
-            onDragStart={(e) => {
-              if (used) {
+            title={selected ? 'Celadora asignada' : 'Click o arrastrá para asignar'}
+            {...recursoDragHandlers('celadora', c.id)}
+            onClick={() =>
+              onRecursoCardClick(() => assignCeladora(c.id), { disabled: selected })
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                return;
+                onRecursoCardClick(() => assignCeladora(c.id), { disabled: selected });
               }
-              setDragPayload(e, { kind: 'celadora', id: c.id });
-              setDraggingKind('celadora');
             }}
-            onDragEnd={() => setDraggingKind(null)}
           >
             <strong>{c.username}</strong>
             {recursoZonaBadge(c.zonaNombre, c.esZonaActual)}
@@ -1327,19 +1417,24 @@ export function GrillaTablero({
         return (
           <div
             key={p.id}
-            className={`grilla-recurso-card${used ? ' is-used' : ''}${
+            role="button"
+            tabIndex={used ? -1 : 0}
+            aria-disabled={used}
+            className={`grilla-recurso-card${used ? ' is-pasajero-usado' : ''}${
               p.esZonaActual === false ? ' is-otra-zona' : ''
             }`}
-            draggable={!used}
-            onDragStart={(e) => {
-              if (used) {
+            title={used ? 'Pasajero ya en la grilla' : 'Click o arrastrá para agregar'}
+            {...recursoDragHandlers('pasajero', p.id, used)}
+            onClick={() =>
+              onRecursoCardClick(() => addPasajeroFila(p.id), { disabled: used })
+            }
+            onKeyDown={(e) => {
+              if (used) return;
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                return;
+                onRecursoCardClick(() => addPasajeroFila(p.id));
               }
-              setDragPayload(e, { kind: 'pasajero', id: p.id });
-              setDraggingKind('pasajero');
             }}
-            onDragEnd={() => setDraggingKind(null)}
           >
             <strong>{p.nombre}</strong>
             <small>{p.direccion}</small>
@@ -1348,22 +1443,38 @@ export function GrillaTablero({
         );
       });
     }
-    return opts.destinos.filter((d) => matchRecursoName(d.nombre)).map((d) => (
+    return opts.destinos.filter((d) => matchRecursoName(d.nombre)).map((d) => {
+      const esBase = isBaseLcNombre(d.nombre);
+      const destinoColor = !esBase ? d.color?.trim() || null : null;
+      return (
       <div
         key={d.id}
-        className={`grilla-recurso-card${d.esZonaActual === false ? ' is-otra-zona' : ''}`}
-        draggable
-        onDragStart={(e) => {
-          setDragPayload(e, { kind: 'destino', id: d.id });
-          setDraggingKind('destino');
+        role="button"
+        tabIndex={0}
+        className={`grilla-recurso-card${d.esZonaActual === false ? ' is-otra-zona' : ''}${
+          destinoColor ? ' has-destino-color' : ''
+        }`}
+        style={
+          destinoColor
+            ? ({ '--destino-color': destinoColor } as CSSProperties)
+            : undefined
+        }
+        title="Click o arrastrá para agregar"
+        {...recursoDragHandlers('destino', d.id)}
+        onClick={() => onRecursoCardClick(() => addDestinoFila(d.id))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onRecursoCardClick(() => addDestinoFila(d.id));
+          }
         }}
-        onDragEnd={() => setDraggingKind(null)}
       >
         <strong>{d.nombre}</strong>
         <small>{d.domicilio}</small>
         {recursoZonaBadge(d.zonaNombre, d.esZonaActual)}
       </div>
-    ));
+      );
+    });
   };
 
   return (
@@ -1373,8 +1484,8 @@ export function GrillaTablero({
           <h2>{isNew ? 'Nueva grilla' : 'Editar grilla'}</h2>
           <p className="panel-card__desc">
             Elegí la zona (o Híbrida para recursos de todas), luego armá el recorrido
-            arrastrando desde la izquierda. El orden de las paradas es el del arrastre;
-            después podés reordenarlas.
+            con click o arrastre desde la izquierda. El orden de las paradas es el del
+            agregado; después podés reordenarlas.
           </p>
         </div>
         <div className="grilla-tablero__header-actions">
@@ -1384,9 +1495,9 @@ export function GrillaTablero({
           <button
             type="button"
             className="btn btn--outline btn--sm"
-            onClick={handleSugerirHorarios}
+            onClick={() => void handleSugerirHorarios()}
             disabled={submitting || filas.length === 0}
-            title="Completa horarios vacíos hacia atrás desde destinos con hora (15 min)"
+            title="Completa horarios vacíos hacia atrás según tiempo de viaje entre paradas (OSRM); si falta ruta usa 15 min"
           >
             Sugerir horarios
           </button>
@@ -1562,7 +1673,7 @@ export function GrillaTablero({
               Modo híbrido: recursos de todas las zonas (etiquetados).
             </p>
           )}          <h3>Recursos</h3>
-          <p className="grilla-tablero__hint">Elegí un tipo, arrastrá y cerrá el listado.</p>
+          <p className="grilla-tablero__hint">Elegí un tipo; click o arrastrá, y cerrá el listado.</p>
           {recursoSections.map((section) => (
             <div key={section.key} className="grilla-recurso-acc">
               <button
@@ -1828,7 +1939,16 @@ export function GrillaTablero({
                 ref={paradasListRef}
                 className={`grilla-paradas-list${reorderDragId ? ' is-reordering' : ''}`}
               >
-              {filas.map((fila, index) => (
+              {filas.map((fila, index) => {
+                const destinoDeFila =
+                  fila.tipoParada === 'destino' && fila.destinoId
+                    ? opts.destinos.find((d) => d.id === fila.destinoId)
+                    : undefined;
+                const destinoColor =
+                  destinoDeFila && !isBaseLcNombre(destinoDeFila.nombre)
+                    ? destinoDeFila.color?.trim() || null
+                    : null;
+                return (
                 <div
                   key={fila.clientId}
                   data-fila-id={fila.clientId}
@@ -1837,9 +1957,15 @@ export function GrillaTablero({
                     'grilla-fila--board',
                     dropTargetId === fila.clientId ? 'is-drop-target' : '',
                     reorderDragId === fila.clientId ? 'is-dragging' : '',
+                    destinoColor ? 'has-destino-color' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
+                  style={
+                    destinoColor
+                      ? ({ '--destino-color': destinoColor } as CSSProperties)
+                      : undefined
+                  }
                   onDragOver={(e) => {
                     if (draggingKind === 'pasajero' || draggingKind === 'destino') {
                       e.preventDefault();
@@ -2015,7 +2141,8 @@ export function GrillaTablero({
                     Quitar
                   </button>
                 </div>
-              ))}
+                );
+              })}
               </div>
             )}
           </div>

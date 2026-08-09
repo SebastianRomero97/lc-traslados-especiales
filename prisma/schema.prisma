@@ -188,7 +188,7 @@ model Destino {
   id        String   @id @default(cuid())
   nombre    String
   domicilio String
-  /// Color de identidad en el área (hex, único por área).
+  /// Color de identidad (hex, único en toda la app). Base LC no usa color.
   color     String?
   lat       Float?
   lon       Float?

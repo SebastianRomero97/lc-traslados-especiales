@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
+  formatTramoKmMin,
   geocodeParadas,
   osrmRoute,
   osrmTripOptimize,
   type Coords,
   type MapaParada,
+  type OsrmLeg,
   type ParadaGeocodificada,
 } from '@/lib/osm-maps';
 
@@ -19,6 +21,48 @@ function makeNumberIcon(n: number, adjusted?: boolean) {
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   });
+}
+
+function addLegPolylines(layer: L.LayerGroup, legs: OsrmLeg[], labels?: string[]) {
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const latLngs = leg.geometry.coordinates.map(([lon, lat]) => L.latLng(lat, lon));
+    if (latLngs.length < 2) continue;
+
+    const label =
+      labels?.[i] ??
+      formatTramoKmMin(leg.distanceMeters, leg.durationSeconds);
+
+    const hit = L.polyline(latLngs, {
+      color: '#002D72',
+      weight: 18,
+      opacity: 0,
+      interactive: true,
+      className: 'grilla-mapa-tramo-hit',
+    });
+    const visible = L.polyline(latLngs, {
+      color: '#002D72',
+      weight: 5,
+      opacity: 0.85,
+      interactive: false,
+    });
+
+    hit.bindTooltip(label, {
+      sticky: true,
+      direction: 'top',
+      opacity: 0.95,
+      className: 'grilla-mapa-tramo-tooltip',
+    });
+    hit.on('mouseover', () => {
+      visible.setStyle({ weight: 8, opacity: 1 });
+    });
+    hit.on('mouseout', () => {
+      visible.setStyle({ weight: 5, opacity: 0.85 });
+    });
+
+    visible.addTo(layer);
+    hit.addTo(layer);
+  }
 }
 
 type Props = {
@@ -159,7 +203,7 @@ export function GrillaMapa({
         let distance = 0;
         let duration = 0;
         let labelPrefix = 'Recorrido';
-        let drewRoute = false;
+        let routeLegs: OsrmLeg[] = [];
 
         if (shouldOptimize && ubicadas.length >= 3) {
           setBusyMsg('Optimizando recorrido…');
@@ -176,11 +220,8 @@ export function GrillaMapa({
             }
             distance = trip.distanceMeters;
             duration = trip.durationSeconds;
+            routeLegs = trip.legs;
             labelPrefix = 'Optimizado';
-            L.geoJSON(trip.geometry as GeoJSON.GeoJsonObject, {
-              style: { color: '#002D72', weight: 5, opacity: 0.85 },
-            }).addTo(layerGroup.current!);
-            drewRoute = true;
           } else {
             onErrorRef.current?.('No se pudo optimizar la ruta. Se muestra el orden actual.');
           }
@@ -205,16 +246,30 @@ export function GrillaMapa({
           });
         });
 
-        if (!drewRoute && routeCoords.length >= 2) {
+        if (routeCoords.length >= 2) {
           setBusyMsg('Calculando ruta…');
-          const route = await osrmRoute(routeCoords.map((g) => g.coords));
+          if (routeLegs.length === 0) {
+            const route = await osrmRoute(routeCoords.map((g) => g.coords));
+            if (cancelled) return;
+            if (route) {
+              distance = route.distanceMeters;
+              duration = route.durationSeconds;
+              routeLegs = route.legs;
+            }
+          }
           if (cancelled) return;
-          if (route) {
-            distance = route.distanceMeters;
-            duration = route.durationSeconds;
-            L.geoJSON(route.geometry as GeoJSON.GeoJsonObject, {
-              style: { color: '#002D72', weight: 5, opacity: 0.85 },
-            }).addTo(layerGroup.current!);
+
+          if (routeLegs.length > 0) {
+            const tramoLabels = routeLegs.map((leg, idx) => {
+              const from = routeCoords[leg.fromIndex] ?? routeCoords[idx];
+              const to = routeCoords[leg.toIndex] ?? routeCoords[idx + 1];
+              const pair =
+                from && to
+                  ? `${escapeHtml(from.label)} → ${escapeHtml(to.label)}`
+                  : 'Tramo';
+              return `${pair}<br/>${formatTramoKmMin(leg.distanceMeters, leg.durationSeconds)}`;
+            });
+            addLegPolylines(layerGroup.current!, routeLegs, tramoLabels);
           } else {
             L.polyline(latLngs, { color: '#002D72', weight: 3, dashArray: '6 8' }).addTo(
               layerGroup.current!,
@@ -229,7 +284,7 @@ export function GrillaMapa({
           setResumen(routeCoords[0].label);
         } else if (distance > 0) {
           setResumen(
-            `${labelPrefix} ≈ ${(distance / 1000).toFixed(1)} km · ${Math.max(1, Math.round(duration / 60))} min`,
+            `${labelPrefix} ≈ ${(distance / 1000).toFixed(1)} km · ${Math.max(1, Math.round(duration / 60))} min · pasá el mouse por un tramo`,
           );
         } else {
           setResumen('Marcadores ubicados');

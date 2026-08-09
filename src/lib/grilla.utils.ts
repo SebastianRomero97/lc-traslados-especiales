@@ -573,13 +573,22 @@ export function formatHoraMinutos(total: number): string {
 /**
  * Sugiere horarios hacia atrás desde destinos con hora fija.
  * Solo completa filas sin hora; no pisa horarios ya cargados.
+ * `gapsMinutos[j]` = minutos de viaje de la parada j → j+1 (OSRM).
+ * Si falta un gap, usa `fallbackMinutos`.
  */
 export function sugerirHorariosHaciaAtras(
   filas: { hora?: string | null; destinoId?: string | null }[],
-  minutosEntreParadas = 15,
+  fallbackMinutos = 15,
+  gapsMinutos?: (number | null)[],
 ): (string | null)[] {
-  const gap = Math.max(1, minutosEntreParadas);
+  const fallback = Math.max(1, fallbackMinutos);
   const result: (string | null)[] = filas.map((f) => f.hora?.trim() || null);
+
+  const gapAt = (fromIndex: number) => {
+    const g = gapsMinutos?.[fromIndex];
+    if (g != null && Number.isFinite(g) && g > 0) return Math.max(1, Math.round(g));
+    return fallback;
+  };
 
   for (let i = 0; i < filas.length; i++) {
     if (!filas[i]?.destinoId) continue;
@@ -589,8 +598,12 @@ export function sugerirHorariosHaciaAtras(
     let cursor = anchor;
     for (let j = i - 1; j >= 0; j--) {
       if (filas[j]?.destinoId && result[j]) break;
-      if (result[j]) continue;
-      cursor -= gap;
+      if (result[j]) {
+        const existing = parseHoraMinutos(result[j]);
+        if (existing != null) cursor = existing;
+        continue;
+      }
+      cursor -= gapAt(j);
       result[j] = formatHoraMinutos(cursor);
     }
   }

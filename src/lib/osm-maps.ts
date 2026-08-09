@@ -141,17 +141,84 @@ export async function geocodeParadas(
   return { ubicadas, faltantes, recienGeocodificadas };
 }
 
+export type OsrmLeg = {
+  distanceMeters: number;
+  durationSeconds: number;
+  geometry: LineGeometry;
+  fromIndex: number;
+  toIndex: number;
+};
+
 export type OsrmRouteResult = {
   geometry: LineGeometry;
   distanceMeters: number;
   durationSeconds: number;
+  legs: OsrmLeg[];
 };
 
-/** Ruta en el orden dado (driving). */
+type OsrmStepJson = {
+  geometry?: LineGeometry;
+};
+
+type OsrmLegJson = {
+  distance: number;
+  duration: number;
+  steps?: OsrmStepJson[];
+};
+
+function mergeStepGeometries(steps: OsrmStepJson[] | undefined): LineGeometry | null {
+  if (!steps?.length) return null;
+  const coordinates: [number, number][] = [];
+  for (const step of steps) {
+    const coords = step.geometry?.coordinates;
+    if (!coords?.length) continue;
+    for (const c of coords) {
+      const prev = coordinates[coordinates.length - 1];
+      if (prev && prev[0] === c[0] && prev[1] === c[1]) continue;
+      coordinates.push(c);
+    }
+  }
+  if (coordinates.length < 2) return null;
+  return { type: 'LineString', coordinates };
+}
+
+function straightLegGeometry(from: Coords, to: Coords): LineGeometry {
+  return {
+    type: 'LineString',
+    coordinates: [
+      [from.lon, from.lat],
+      [to.lon, to.lat],
+    ],
+  };
+}
+
+function parseOsrmLegs(
+  legsJson: OsrmLegJson[] | undefined,
+  waypoints: Coords[],
+): OsrmLeg[] {
+  if (!legsJson?.length || waypoints.length < 2) return [];
+  const legs: OsrmLeg[] = [];
+  for (let i = 0; i < legsJson.length; i++) {
+    const leg = legsJson[i];
+    const from = waypoints[i];
+    const to = waypoints[i + 1];
+    if (!from || !to) continue;
+    legs.push({
+      distanceMeters: leg.distance,
+      durationSeconds: leg.duration,
+      geometry: mergeStepGeometries(leg.steps) ?? straightLegGeometry(from, to),
+      fromIndex: i,
+      toIndex: i + 1,
+    });
+  }
+  return legs;
+}
+
+/** Ruta en el orden dado (driving), con tramos entre waypoints. */
 export async function osrmRoute(coords: Coords[]): Promise<OsrmRouteResult | null> {
   if (coords.length < 2) return null;
   const path = coords.map((c) => `${c.lon},${c.lat}`).join(';');
-  const url = `${OSRM_URL}/route/v1/driving/${path}?overview=full&geometries=geojson`;
+  const url = `${OSRM_URL}/route/v1/driving/${path}?overview=full&geometries=geojson&steps=true`;
   const response = await fetch(url);
   if (!response.ok) return null;
   const data = (await response.json()) as {
@@ -160,6 +227,7 @@ export async function osrmRoute(coords: Coords[]): Promise<OsrmRouteResult | nul
       distance: number;
       duration: number;
       geometry: LineGeometry;
+      legs?: OsrmLegJson[];
     }[];
   };
   if (data.code !== 'Ok' || !data.routes?.[0]) return null;
@@ -168,6 +236,7 @@ export async function osrmRoute(coords: Coords[]): Promise<OsrmRouteResult | nul
     geometry: route.geometry,
     distanceMeters: route.distance,
     durationSeconds: route.duration,
+    legs: parseOsrmLegs(route.legs, coords),
   };
 }
 
@@ -178,11 +247,12 @@ export type OsrmTripResult = OsrmRouteResult & {
 /**
  * Optimiza el orden de paradas intermedias (OSRM Trip).
  * Mantiene primera y última (source=first, destination=last).
+ * Luego recalcula la ruta ordenada para obtener tramos (legs).
  */
 export async function osrmTripOptimize(coords: Coords[]): Promise<OsrmTripResult | null> {
   if (coords.length < 3) return null;
   const path = coords.map((c) => `${c.lon},${c.lat}`).join(';');
-  const url = `${OSRM_URL}/trip/v1/driving/${path}?overview=full&geometries=geojson&source=first&destination=last&roundtrip=false`;
+  const url = `${OSRM_URL}/trip/v1/driving/${path}?overview=false&source=first&destination=last&roundtrip=false`;
   const response = await fetch(url);
   if (!response.ok) return null;
   const data = (await response.json()) as {
@@ -190,7 +260,6 @@ export async function osrmTripOptimize(coords: Coords[]): Promise<OsrmTripResult
     trips?: {
       distance: number;
       duration: number;
-      geometry: LineGeometry;
     }[];
     waypoints?: { waypoint_index: number }[];
   };
@@ -201,11 +270,24 @@ export async function osrmTripOptimize(coords: Coords[]): Promise<OsrmTripResult
     .sort((a, b) => a.order - b.order)
     .map((x) => x.inputIndex);
 
-  const trip = data.trips[0];
+  const orderedCoords = ordered.map((idx) => coords[idx]).filter(Boolean) as Coords[];
+  const routed = await osrmRoute(orderedCoords);
+  if (!routed) {
+    const trip = data.trips[0];
+    return {
+      geometry: {
+        type: 'LineString',
+        coordinates: orderedCoords.map((c) => [c.lon, c.lat]),
+      },
+      distanceMeters: trip.distance,
+      durationSeconds: trip.duration,
+      legs: [],
+      waypointOrder: ordered,
+    };
+  }
+
   return {
-    geometry: trip.geometry,
-    distanceMeters: trip.distance,
-    durationSeconds: trip.duration,
+    ...routed,
     waypointOrder: ordered,
   };
 }
@@ -214,4 +296,50 @@ export function formatDistanciaDuracion(meters: number, seconds: number): string
   const km = (meters / 1000).toFixed(1);
   const mins = Math.max(1, Math.round(seconds / 60));
   return `Recorrido ≈ ${km} km · ${mins} min`;
+}
+
+/** Etiqueta corta para un tramo (hover en mapa). */
+export function formatTramoKmMin(meters: number, seconds: number): string {
+  const km = meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
+  const mins = Math.max(1, Math.round(seconds / 60));
+  return `${km} · ${mins} min`;
+}
+
+/**
+ * Duraciones (minutos) entre paradas consecutivas vía OSRM.
+ * `gaps[i]` = minutos de viaje de la parada i → i+1.
+ * Si falta coords o falla OSRM, esa posición queda `null` (usar fallback).
+ */
+export async function osrmTravelGapsMinutes(
+  coordsPerStop: (Coords | null)[],
+): Promise<(number | null)[]> {
+  const n = coordsPerStop.length;
+  if (n < 2) return [];
+
+  const gaps: (number | null)[] = Array.from({ length: n - 1 }, () => null);
+
+  // Segmentos contiguos con coords válidas → una sola request OSRM por bloque.
+  let start = -1;
+  const flush = async (from: number, to: number) => {
+    const slice = coordsPerStop.slice(from, to + 1) as Coords[];
+    if (slice.length < 2) return;
+    const route = await osrmRoute(slice);
+    if (!route?.legs.length) return;
+    for (let i = 0; i < route.legs.length; i++) {
+      const leg = route.legs[i];
+      gaps[from + i] = Math.max(1, Math.round(leg.durationSeconds / 60));
+    }
+  };
+
+  for (let i = 0; i < n; i++) {
+    if (coordsPerStop[i]) {
+      if (start < 0) start = i;
+    } else if (start >= 0) {
+      await flush(start, i - 1);
+      start = -1;
+    }
+  }
+  if (start >= 0) await flush(start, n - 1);
+
+  return gaps;
 }

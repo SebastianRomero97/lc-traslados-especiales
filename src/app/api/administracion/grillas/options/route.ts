@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdministracionApi } from '@/lib/administracion-auth';
+import { ensureDestinoColorsGlobal } from '@/lib/destino-color-server';
 
 type ZonaMeta = { zonaId: string; zonaNombre: string; esZonaActual: boolean };
 
@@ -20,6 +21,8 @@ export async function GET(request: Request) {
   if (!areaId) {
     return NextResponse.json({ message: 'Indicá areaId.' }, { status: 400 });
   }
+
+  await ensureDestinoColorsGlobal();
 
   const areas = await prisma.area.findMany({
     where: { active: true },

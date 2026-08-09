@@ -44,7 +44,7 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-/** Elige un color no usado en la zona (paleta + fallbacks HSL). */
+/** Elige un color no usado (paleta + fallbacks HSL). Unicidad global de destinos. */
 export function pickUniqueDestinoColor(usedColors: Iterable<string>): string {
   const used = new Set(
     [...usedColors].map(normalizeColor).filter(Boolean),

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAdministracionApi } from '@/lib/administracion-auth';
 import { describeCaughtError } from '@/lib/api-errors';
 import { allocateDestinoColor } from '@/lib/destino-color-server';
+import { isBaseLcNombre } from '@/lib/base-lc.utils';
 
 type Body = {
   areaId?: string;
@@ -221,10 +222,12 @@ export async function POST(request: Request) {
         if (destino.areaId === areaId) {
           return NextResponse.json({ message: 'El destino ya pertenece a esta zona.' });
         }
-        const color = await allocateDestinoColor(areaId, destinoId);
+        const nextColor = isBaseLcNombre(destino.nombre)
+          ? null
+          : destino.color?.trim() || (await allocateDestinoColor(areaId, destinoId, destino.nombre));
         await prisma.destino.update({
           where: { id: destinoId },
-          data: { areaId, color },
+          data: { areaId, color: nextColor },
         });
         return NextResponse.json({ message: 'Destino movido a la zona.' });
       }

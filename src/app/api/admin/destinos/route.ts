@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Zona no encontrada.' }, { status: 404 });
     }
 
-    const color = await allocateDestinoColor(areaId!);
+    const color = await allocateDestinoColor(areaId!, undefined, nombre);
     const destino = await prisma.destino.create({
       data: {
         areaId: areaId!,

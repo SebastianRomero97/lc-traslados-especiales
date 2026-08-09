@@ -786,28 +786,42 @@ export function AdministracionGrillasManager({
 
       <section className="panel-card grillas-periodo">
         <div className="grillas-periodo__toolbar">
-          <nav className="panel-segment" aria-label="Periodo">
-            {(
-              [
-                ['hoy', 'Hoy'],
-                ['semana', 'Semana'],
-                ['mes', 'Mes'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={`panel-segment__item${periodo === id ? ' is-active' : ''}`}
-                onClick={() => {
-                  setPeriodo(id);
-                  setSelectedId(null);
-                  setMesDiaSeleccionado(null);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          <div className="grillas-periodo__toolbar-left">
+            <nav className="panel-segment" aria-label="Periodo">
+              {(
+                [
+                  ['hoy', 'Hoy'],
+                  ['semana', 'Semana'],
+                  ['mes', 'Mes'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`panel-segment__item${periodo === id ? ' is-active' : ''}`}
+                  onClick={() => {
+                    setPeriodo(id);
+                    setSelectedId(null);
+                    setMesDiaSeleccionado(null);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={areas.length === 0}
+              onClick={() =>
+                openNueva(
+                  periodo === 'mes' && mesDiaSeleccionado ? mesDiaSeleccionado : hoy,
+                )
+              }
+            >
+              Crear Grilla
+            </button>
+          </div>
         </div>
 
         {periodo === 'hoy' && (
@@ -819,14 +833,6 @@ export function AdministracionGrillasManager({
                   Grillas activas del día actual.
                 </p>
               </div>
-              <button
-                type="button"
-                className="btn btn--primary"
-                disabled={areas.length === 0}
-                onClick={() => openNueva(hoy)}
-              >
-                Crear
-              </button>
             </div>
             {renderListaDetalle(grillasHoy, 'No hay grillas para hoy.')}
           </div>
@@ -870,7 +876,7 @@ export function AdministracionGrillasManager({
                       disabled={areas.length === 0}
                       onClick={() => openNueva(dayKey)}
                     >
-                      Crear
+                      Crear Grilla
                     </button>
                     <ul className="grillas-semana__list">
                       {list.length === 0 ? (
@@ -936,14 +942,6 @@ export function AdministracionGrillasManager({
                       {formatFechaGrilla(mesDiaSeleccionado)}
                     </h2>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={areas.length === 0}
-                    onClick={() => openNueva(mesDiaSeleccionado)}
-                  >
-                    Crear
-                  </button>
                 </div>
                 {renderListaDetalle(
                   grillasPorDia(mesDiaSeleccionado),
