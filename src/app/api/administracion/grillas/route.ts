@@ -10,7 +10,8 @@ import {
   type GrillaFilaInput,
   type TipoItinerario,
 } from '@/lib/grilla.utils';
-import { filaCoordsData, syncCoordsToSources } from '@/lib/coords-sync';
+import { syncCoordsToSources } from '@/lib/coords-sync';
+import { prepareGrillaFilasForSave } from '@/lib/grilla-trasbordo';
 import {
   applyForceReassign,
   conflictsNotAutoResolvable,
@@ -40,6 +41,7 @@ const grillaInclude = {
     orderBy: { orden: 'asc' as const },
     include: {
       pasajero: { select: { id: true, nombre: true, direccion: true } },
+      trasbordoTransporte: { select: { id: true, nombre: true, tipo: true } },
     },
   },
 };
@@ -186,23 +188,26 @@ export async function POST(request: Request) {
     for (let i = 0; i < filas.length; i++) {
       const fila = filas[i];
       const n = i + 1;
-      const esDestino = Boolean(fila.destinoId);
+      const accion = normalizeAccion(fila.accion);
+      const esDestino = Boolean(fila.destinoId) && accion !== 'TRASBORDO';
       const filaMissing = missingFieldsMessage(
         {
-          ...(esDestino ? { hora: fila.hora } : {}),
-          direccion: fila.direccion,
-          pasajeroNombre: fila.pasajeroNombre,
-          accion: fila.accion,
-          ...(normalizeAccion(fila.accion) === 'TRASBORDO'
-            ? { trasbordoHacia: fila.trasbordoHacia }
+          ...(esDestino || (accion === 'TRASBORDO' && fila.destinoId)
+            ? { hora: fila.hora }
             : {}),
+          ...(accion !== 'TRASBORDO'
+            ? {
+                direccion: fila.direccion,
+                pasajeroNombre: fila.pasajeroNombre,
+              }
+            : {}),
+          accion: fila.accion,
         },
         {
           hora: `hora del destino (fila ${n})`,
           direccion: `dirección (fila ${n})`,
           pasajeroNombre: `detalle/pasajero (fila ${n})`,
           accion: `acción (fila ${n})`,
-          trasbordoHacia: `vehículo de trasbordo (fila ${n})`,
         },
       );
       if (filaMissing) {
@@ -210,10 +215,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const [area, transporte, chofer] = await Promise.all([
+    const [area, transporte, chofer, celadoraUser] = await Promise.all([
       prisma.area.findUnique({ where: { id: areaId! } }),
       prisma.transporte.findUnique({ where: { id: transporteId! } }),
       prisma.user.findUnique({ where: { id: choferId! } }),
+      celadoraId
+        ? prisma.user.findUnique({ where: { id: celadoraId } })
+        : Promise.resolve(null),
     ]);
 
     if (!area) {
@@ -233,8 +241,7 @@ export async function POST(request: Request) {
     }
 
     if (celadoraId) {
-      const celadora = await prisma.user.findUnique({ where: { id: celadoraId } });
-      if (!celadora || !celadora.roles.includes('CELADORA')) {
+      if (!celadoraUser || !celadoraUser.roles.includes('CELADORA')) {
         return NextResponse.json(
           { message: 'La celadora seleccionada no es válida.' },
           { status: 400 },
@@ -242,9 +249,21 @@ export async function POST(request: Request) {
       }
     }
 
+    const prepared = await prepareGrillaFilasForSave({
+      filas,
+      celadoraId: conCeladora ? celadoraId : null,
+      celadoraUsername: celadoraUser?.username ?? null,
+    });
+    if (!prepared.ok) {
+      return NextResponse.json({ message: prepared.message }, { status: 400 });
+    }
+
+    const celadoraHaceTrasbordoFinal =
+      Boolean(celadoraHaceTrasbordo) || prepared.tieneTrasbordoCeladora;
+
     const fechaDay = parseFechaDay(fecha!);
-    const pasajeroIds = filas
-      .map((f) => f.pasajeroId?.trim())
+    const pasajeroIds = prepared.rows
+      .map((f) => f.pasajeroId)
       .filter((id): id is string => Boolean(id));
 
     const conflicts = await findResourceConflicts(prisma, {
@@ -255,7 +274,7 @@ export async function POST(request: Request) {
       transporteId: transporteId!,
       choferId: choferId!,
       celadoraId: conCeladora ? celadoraId : null,
-      celadoraHaceTrasbordo,
+      celadoraHaceTrasbordo: celadoraHaceTrasbordoFinal,
       pasajeroIds,
     });
 
@@ -286,7 +305,7 @@ export async function POST(request: Request) {
           fecha: fechaDay,
           nota: body.nota?.trim() || null,
           conCeladora,
-          celadoraHaceTrasbordo,
+          celadoraHaceTrasbordo: celadoraHaceTrasbordoFinal,
           salidaDeBase: Boolean(body.salidaDeBase),
           retornoABase: Boolean(body.retornoABase),
           areaId: areaId!,
@@ -296,19 +315,20 @@ export async function POST(request: Request) {
           puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
           createdById: auth.user.id,
           filas: {
-            create: filas.map((fila, index) => ({
-              orden: index + 1,
-              hora: fila.hora?.trim() || null,
-              direccion: fila.direccion.trim(),
-              pasajeroNombre: fila.pasajeroNombre.trim(),
-              pasajeroId: fila.pasajeroId || null,
-              destinoId: fila.destinoId || null,
-              accion: normalizeAccion(fila.accion),
-              trasbordoHacia:
-                normalizeAccion(fila.accion) === 'TRASBORDO'
-                  ? fila.trasbordoHacia?.trim() || null
-                  : null,
-              ...filaCoordsData(fila),
+            create: prepared.rows.map((fila) => ({
+              orden: fila.orden,
+              hora: fila.hora,
+              direccion: fila.direccion,
+              pasajeroNombre: fila.pasajeroNombre,
+              pasajeroId: fila.pasajeroId,
+              destinoId: fila.destinoId,
+              accion: fila.accion,
+              trasbordoHacia: fila.trasbordoHacia,
+              trasbordoSujeto: fila.trasbordoSujeto,
+              trasbordoTransporteId: fila.trasbordoTransporteId,
+              lat: fila.lat,
+              lon: fila.lon,
+              usarCoordsParaChofer: fila.usarCoordsParaChofer,
             })),
           },
         },

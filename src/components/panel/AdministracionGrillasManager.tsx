@@ -678,6 +678,7 @@ export function AdministracionGrillasManager({
                           accion: f.accion as AccionParada,
                           pasajeroNombre: f.pasajeroNombre,
                           trasbordoHacia: f.trasbordoHacia,
+                          trasbordoSujeto: f.trasbordoSujeto,
                         })}
                       </td>
                     </tr>

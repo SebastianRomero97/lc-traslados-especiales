@@ -10,7 +10,8 @@ import {
   type GrillaFilaInput,
   type TipoItinerario,
 } from '@/lib/grilla.utils';
-import { filaCoordsData, syncCoordsToSources } from '@/lib/coords-sync';
+import { syncCoordsToSources } from '@/lib/coords-sync';
+import { prepareGrillaFilasForSave } from '@/lib/grilla-trasbordo';
 import {
   applyForceReassign,
   conflictsNotAutoResolvable,
@@ -48,6 +49,7 @@ const grillaInclude = {
     orderBy: { orden: 'asc' as const },
     include: {
       pasajero: { select: { id: true, nombre: true, direccion: true } },
+      trasbordoTransporte: { select: { id: true, nombre: true, tipo: true } },
     },
   },
   asistencias: {
@@ -96,6 +98,7 @@ export async function GET(_request: Request, { params }: Params) {
       pasajeroNombre: f.pasajeroNombre,
       accion: f.accion,
       trasbordoHacia: f.trasbordoHacia,
+      trasbordoSujeto: f.trasbordoSujeto,
     })),
   });
 
@@ -285,9 +288,61 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     let pasajeroIds: string[] = [];
+    let preparedRows: Awaited<ReturnType<typeof prepareGrillaFilasForSave>> | null = null;
+    let celadoraHaceTrasbordoFinal = celadoraHaceTrasbordo;
+
     if (body.filas) {
-      pasajeroIds = body.filas
-        .map((f) => f.pasajeroId?.trim())
+      if (body.filas.length === 0) {
+        return NextResponse.json(
+          { message: 'La grilla debe tener al menos una fila.' },
+          { status: 400 },
+        );
+      }
+      for (let i = 0; i < body.filas.length; i++) {
+        const fila = body.filas[i];
+        const n = i + 1;
+        const accion = normalizeAccion(fila.accion);
+        if (fila.destinoId && !fila.hora?.trim()) {
+          return NextResponse.json(
+            { message: `Indicá la hora del destino (fila ${n}).` },
+            { status: 400 },
+          );
+        }
+        if (accion !== 'TRASBORDO') {
+          if (!fila.direccion?.trim() || !fila.pasajeroNombre?.trim() || !fila.accion) {
+            return NextResponse.json(
+              { message: `Completá dirección y detalle de la fila ${n}.` },
+              { status: 400 },
+            );
+          }
+        } else if (!fila.accion) {
+          return NextResponse.json(
+            { message: `Completá la acción de la fila ${n}.` },
+            { status: 400 },
+          );
+        }
+      }
+
+      const celadoraUser =
+        conCeladora && celadoraId
+          ? await prisma.user.findUnique({
+              where: { id: celadoraId },
+              select: { username: true },
+            })
+          : null;
+
+      preparedRows = await prepareGrillaFilasForSave({
+        filas: body.filas,
+        celadoraId: conCeladora ? celadoraId : null,
+        celadoraUsername: celadoraUser?.username ?? null,
+      });
+      if (!preparedRows.ok) {
+        return NextResponse.json({ message: preparedRows.message }, { status: 400 });
+      }
+      celadoraHaceTrasbordoFinal =
+        Boolean(celadoraHaceTrasbordo) || preparedRows.tieneTrasbordoCeladora;
+      pasajeroIds = preparedRows.rows
+        .map((f) => f.pasajeroId)
         .filter((pid): pid is string => Boolean(pid));
     } else {
       const existingFilas = await prisma.grillaFila.findMany({
@@ -308,7 +363,7 @@ export async function PATCH(request: Request, { params }: Params) {
       transporteId,
       choferId,
       celadoraId: conCeladora ? celadoraId : null,
-      celadoraHaceTrasbordo,
+      celadoraHaceTrasbordo: celadoraHaceTrasbordoFinal,
       pasajeroIds,
     });
 
@@ -331,36 +386,24 @@ export async function PATCH(request: Request, { params }: Params) {
       if (conflicts.length > 0 && forceReassign) {
         await applyForceReassign(tx, conflicts);
       }
-      if (body.filas) {
-        if (body.filas.length === 0) {
-          throw new Error('EMPTY_FILAS');
-        }
-        for (let i = 0; i < body.filas.length; i++) {
-          const fila = body.filas[i];
-          const n = i + 1;
-          if (fila.destinoId && !fila.hora?.trim()) {
-            throw new Error(`DESTINO_SIN_HORA:${n}`);
-          }
-          if (!fila.direccion?.trim() || !fila.pasajeroNombre?.trim() || !fila.accion) {
-            throw new Error(`FILA_INCOMPLETA:${n}`);
-          }
-        }
+      if (body.filas && preparedRows?.ok) {
         await tx.grillaFila.deleteMany({ where: { grillaId: id } });
         await tx.grillaFila.createMany({
-          data: body.filas.map((fila, index) => ({
+          data: preparedRows.rows.map((fila) => ({
             grillaId: id,
-            orden: index + 1,
-            hora: fila.hora?.trim() || null,
-            direccion: fila.direccion.trim(),
-            pasajeroNombre: fila.pasajeroNombre.trim(),
-            pasajeroId: fila.pasajeroId || null,
-            destinoId: fila.destinoId || null,
-            accion: normalizeAccion(fila.accion),
-            trasbordoHacia:
-              normalizeAccion(fila.accion) === 'TRASBORDO'
-                ? fila.trasbordoHacia?.trim() || null
-                : null,
-            ...filaCoordsData(fila),
+            orden: fila.orden,
+            hora: fila.hora,
+            direccion: fila.direccion,
+            pasajeroNombre: fila.pasajeroNombre,
+            pasajeroId: fila.pasajeroId,
+            destinoId: fila.destinoId,
+            accion: fila.accion,
+            trasbordoHacia: fila.trasbordoHacia,
+            trasbordoSujeto: fila.trasbordoSujeto,
+            trasbordoTransporteId: fila.trasbordoTransporteId,
+            lat: fila.lat,
+            lon: fila.lon,
+            usarCoordsParaChofer: fila.usarCoordsParaChofer,
           })),
         });
         await syncCoordsToSources(tx, body.filas);
@@ -377,7 +420,7 @@ export async function PATCH(request: Request, { params }: Params) {
           transporteId,
           choferId,
           conCeladora,
-          celadoraHaceTrasbordo,
+          celadoraHaceTrasbordo: celadoraHaceTrasbordoFinal,
           celadoraId: conCeladora ? celadoraId : null,
           puntoEncuentroId: conCeladora ? puntoEncuentroId : null,
           ...(body.salidaDeBase !== undefined ? { salidaDeBase: Boolean(body.salidaDeBase) } : {}),

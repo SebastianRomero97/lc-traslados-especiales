@@ -12,6 +12,7 @@ export type GrillaResumenFila = {
   destinoId?: string | null;
   accion: string;
   trasbordoHacia?: string | null;
+  trasbordoSujeto?: string | null;
 };
 
 export type GrillaResumenData = {
@@ -157,6 +158,7 @@ export function GrillaResumenPanel({ grilla }: { grilla: GrillaResumenData }) {
                       accion: f.accion as AccionParada,
                       pasajeroNombre: f.pasajeroNombre,
                       trasbordoHacia: f.trasbordoHacia,
+                      trasbordoSujeto: f.trasbordoSujeto,
                     })}
                   </td>
                 </tr>

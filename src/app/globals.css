@@ -4172,6 +4172,27 @@ button, input, select, textarea {
   grid-area: trasbordo;
 }
 
+.grilla-trasbordo-fields {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 680px) {
+  .grilla-trasbordo-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.grilla-fila--board .grilla-fila__trasbordo--bloque {
+  width: 100%;
+}
+
+.grilla-fila--board .grilla-fila__trasbordo--bloque > label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
 .grilla-fila--board .grilla-fila__quitar {
   grid-area: remove;
   justify-self: start;
@@ -4189,9 +4210,10 @@ button, input, select, textarea {
       minmax(110px, 0.55fr)
       minmax(0, 1.6fr)
       minmax(90px, 0.55fr)
-      minmax(120px, 0.7fr)
       auto;
-    grid-template-areas: "handle time detail action trasbordo remove";
+    grid-template-areas:
+      "handle time detail action remove"
+      ". trasbordo trasbordo trasbordo trasbordo";
   }
 
   .grilla-fila--board:not(:has(.grilla-fila__trasbordo)) {

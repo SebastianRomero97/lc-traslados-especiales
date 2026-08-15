@@ -88,6 +88,7 @@ export type HistorialRegistroFicha = {
       pasajeroId: string | null;
       accion: string;
       trasbordoHacia: string | null;
+      trasbordoSujeto?: string | null;
     }[];
   };
 };

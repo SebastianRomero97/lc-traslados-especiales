@@ -70,6 +70,7 @@ export async function GET(_request: Request, { params }: Params) {
                   pasajeroId: true,
                   accion: true,
                   trasbordoHacia: true,
+                  trasbordoSujeto: true,
                 },
               },
             },
@@ -138,6 +139,7 @@ export async function GET(_request: Request, { params }: Params) {
           pasajeroId: string | null;
           accion: string;
           trasbordoHacia: string | null;
+          trasbordoSujeto: string | null;
         }[];
       };
     }[] = [];

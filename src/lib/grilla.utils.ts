@@ -1,5 +1,11 @@
 export type AccionParada = 'SUBE' | 'BAJA' | 'TRASBORDO' | 'SALIDA_BASE' | 'RETORNO_BASE';
 
+export type TrasbordoSujeto = 'PASAJERO' | 'CELADORA';
+
+export function isTrasbordoSujeto(value: string): value is TrasbordoSujeto {
+  return value === 'PASAJERO' || value === 'CELADORA';
+}
+
 export function isAccionBaseLc(accion: string): boolean {
   return accion === 'SALIDA_BASE' || accion === 'RETORNO_BASE';
 }
@@ -136,6 +142,8 @@ export type GrillaFilaInput = {
   destinoId?: string | null;
   accion: AccionParada;
   trasbordoHacia?: string | null;
+  trasbordoSujeto?: TrasbordoSujeto | string | null;
+  trasbordoTransporteId?: string | null;
   lat?: number | null;
   lon?: number | null;
   usarCoordsParaChofer?: boolean | null;
@@ -149,6 +157,8 @@ export type GrillaFilaParaForm = {
   destinoId?: string | null;
   accion: AccionParada | string;
   trasbordoHacia?: string | null;
+  trasbordoSujeto?: TrasbordoSujeto | string | null;
+  trasbordoTransporteId?: string | null;
   lat?: number | null;
   lon?: number | null;
   usarCoordsParaChofer?: boolean | null;
@@ -196,12 +206,15 @@ export function formatAccionFila(params: {
   accion: string;
   pasajeroNombre: string;
   trasbordoHacia?: string | null;
+  trasbordoSujeto?: TrasbordoSujeto | string | null;
 }): string {
   if (params.accion === 'TRASBORDO') {
     const hacia = params.trasbordoHacia?.trim();
-    return hacia
-      ? `trasbordo ${params.pasajeroNombre} → ${hacia}`
-      : `trasbordo ${params.pasajeroNombre}`;
+    const quien =
+      params.trasbordoSujeto === 'CELADORA'
+        ? `celadora${params.pasajeroNombre?.trim() ? ` ${params.pasajeroNombre.trim()}` : ''}`
+        : params.pasajeroNombre?.trim() || 'pasajero';
+    return hacia ? `trasbordo ${quien} → ${hacia}` : `trasbordo ${quien}`;
   }
   if (isAccionBaseLc(params.accion)) {
     return labelAccionParada(params.accion);
@@ -297,12 +310,22 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
   destinoId: string;
   accion: AccionParada;
   trasbordoHacia: string;
+  trasbordoSujeto: TrasbordoSujeto | '';
+  trasbordoTransporteId: string;
+  /** Destino vs dirección libre para el punto de trasbordo. */
+  trasbordoPuntoMode: 'destino' | 'direccion';
   lat: number | null;
   lon: number | null;
   usarCoordsParaChofer: boolean;
 } {
   const accion = normalizeAccion(fila.accion);
   const tipoParada = inferTipoParada(fila);
+  const sujetoRaw = fila.trasbordoSujeto?.toString().trim() ?? '';
+  const trasbordoSujeto: TrasbordoSujeto | '' = isTrasbordoSujeto(sujetoRaw)
+    ? sujetoRaw
+    : accion === 'TRASBORDO'
+      ? 'PASAJERO'
+      : '';
   return {
     tipoParada,
     hora: fila.hora ?? '',
@@ -312,6 +335,9 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
     destinoId: fila.destinoId ?? '',
     accion,
     trasbordoHacia: fila.trasbordoHacia ?? '',
+    trasbordoSujeto,
+    trasbordoTransporteId: fila.trasbordoTransporteId ?? '',
+    trasbordoPuntoMode: fila.destinoId ? 'destino' : 'direccion',
     lat: fila.lat ?? null,
     lon: fila.lon ?? null,
     usarCoordsParaChofer: Boolean(fila.usarCoordsParaChofer),
@@ -331,6 +357,7 @@ export function buildGrillaWhatsAppText(params: {
     pasajeroNombre: string;
     accion: string;
     trasbordoHacia?: string | null;
+    trasbordoSujeto?: TrasbordoSujeto | string | null;
   }[];
 }): string {
   const responsables = params.conCeladora
@@ -349,6 +376,7 @@ export function buildGrillaWhatsAppText(params: {
           accion: f.accion,
           pasajeroNombre: f.pasajeroNombre,
           trasbordoHacia: f.trasbordoHacia,
+          trasbordoSujeto: f.trasbordoSujeto,
         })}`,
     ),
   ].filter((line) => line !== null);

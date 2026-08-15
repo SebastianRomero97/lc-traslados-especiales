@@ -36,6 +36,12 @@ enum AccionParada {
   RETORNO_BASE
 }
 
+/// Quién realiza el trasbordo en una fila (solo si accion = TRASBORDO).
+enum TrasbordoSujeto {
+  PASAJERO
+  CELADORA
+}
+
 enum EstadoAsistencia {
   ASISTIO
   CANCELO
@@ -128,6 +134,7 @@ model Transporte {
   celadoras TransporteCeladora[]
   grillas   Grilla[]
   novedades NovedadVehiculo[]
+  filasTrasbordo GrillaFila[] @relation("FilaTrasbordoTransporte")
 }
 
 model Pasajero {
@@ -381,10 +388,16 @@ model GrillaFila {
   destinoId      String?
   destino        Destino?    @relation(fields: [destinoId], references: [id], onDelete: SetNull)
   accion         AccionParada
-  /// Nombre del otro vehículo cuando accion = TRASBORDO
+  /// Nombre del otro vehículo cuando accion = TRASBORDO (snapshot para impresión).
   trasbordoHacia String?
+  /// Quién hace el trasbordo (pasajero o celadora).
+  trasbordoSujeto TrasbordoSujeto?
+  /// Vehículo al que pasa (selección estructurada).
+  trasbordoTransporteId String?
+  trasbordoTransporte   Transporte? @relation("FilaTrasbordoTransporte", fields: [trasbordoTransporteId], references: [id], onDelete: SetNull)
 
   @@index([grillaId])
+  @@index([trasbordoTransporteId])
 }
 
 /// Asistencia de un pasajero en una grilla (una por pasajero/nombre en el recorrido)

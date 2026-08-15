@@ -21,6 +21,7 @@ import {
   type SentidoItinerario,
   type TipoItinerario,
   type TipoParadaForm,
+  type TrasbordoSujeto,
 } from '@/lib/grilla.utils';
 import { isBaseLcNombre } from '@/lib/base-lc.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
@@ -63,6 +64,9 @@ type FilaBoard = {
   destinoId: string;
   accion: AccionParada;
   trasbordoHacia: string;
+  trasbordoSujeto: TrasbordoSujeto | '';
+  trasbordoTransporteId: string;
+  trasbordoPuntoMode: 'destino' | 'direccion';
   lat: number | null;
   lon: number | null;
   usarCoordsParaChofer: boolean;
@@ -157,6 +161,8 @@ export type GrillaTableroInitial = {
     destinoId?: string | null;
     accion: AccionParada | string;
     trasbordoHacia: string | null;
+    trasbordoSujeto?: TrasbordoSujeto | string | null;
+    trasbordoTransporteId?: string | null;
     lat?: number | null;
     lon?: number | null;
     usarCoordsParaChofer?: boolean | null;
@@ -714,6 +720,9 @@ export function GrillaTablero({
         destinoId: '',
         accion,
         trasbordoHacia: '',
+        trasbordoSujeto: '',
+        trasbordoTransporteId: '',
+        trasbordoPuntoMode: 'destino',
         lat: p.lat ?? null,
         lon: p.lon ?? null,
         usarCoordsParaChofer: Boolean(p.usarCoordsParaChofer),
@@ -745,6 +754,9 @@ export function GrillaTablero({
         destinoId: d.id,
         accion,
         trasbordoHacia: '',
+        trasbordoSujeto: '',
+        trasbordoTransporteId: '',
+        trasbordoPuntoMode: 'destino',
         lat: d.lat ?? null,
         lon: d.lon ?? null,
         usarCoordsParaChofer: Boolean(d.usarCoordsParaChofer),
@@ -862,14 +874,40 @@ export function GrillaTablero({
     for (let i = 0; i < filas.length; i++) {
       const fila = filas[i];
       const n = i + 1;
+      if (fila.accion === 'TRASBORDO') {
+        if (!fila.trasbordoSujeto) {
+          return `Indicá si el trasbordo es de pasajero o celadora (fila ${n}).`;
+        }
+        if (!fila.trasbordoTransporteId.trim()) {
+          return `Seleccioná el vehículo de trasbordo (fila ${n}).`;
+        }
+        if (fila.trasbordoSujeto === 'CELADORA' && !celadoraId) {
+          return `Asigná una celadora a la grilla para el trasbordo (fila ${n}).`;
+        }
+        if (
+          fila.trasbordoSujeto === 'PASAJERO' &&
+          !fila.pasajeroId.trim() &&
+          !fila.pasajeroNombre.trim()
+        ) {
+          return `Indicá el pasajero del trasbordo (fila ${n}).`;
+        }
+        if (fila.trasbordoPuntoMode === 'destino') {
+          if (!fila.destinoId.trim()) {
+            return `Elegí el destino del punto de trasbordo (fila ${n}).`;
+          }
+          if (!fila.hora.trim()) {
+            return `Indicá la hora del trasbordo (fila ${n}).`;
+          }
+        } else if (!fila.direccion.trim()) {
+          return `Indicá la dirección del punto de trasbordo (fila ${n}).`;
+        }
+        continue;
+      }
       if (fila.tipoParada === 'destino' && !fila.hora.trim()) {
         return `Indicá la hora del destino (fila ${n}).`;
       }
       if (!fila.direccion.trim() || !fila.pasajeroNombre.trim()) {
         return `Completá dirección y detalle (fila ${n}).`;
-      }
-      if (fila.accion === 'TRASBORDO' && !fila.trasbordoHacia.trim()) {
-        return `Indicá a qué vehículo hace trasbordo (fila ${n}).`;
       }
     }
     return null;
@@ -1093,24 +1131,48 @@ export function GrillaTablero({
         transporteId,
         choferId,
         conCeladora: Boolean(celadoraId),
-        celadoraHaceTrasbordo: Boolean(celadoraId) && celadoraHaceTrasbordo,
+        celadoraHaceTrasbordo:
+          Boolean(celadoraId) &&
+          (celadoraHaceTrasbordo ||
+            filas.some(
+              (f) => f.accion === 'TRASBORDO' && f.trasbordoSujeto === 'CELADORA',
+            )),
         celadoraId: celadoraId || null,
         puntoEncuentroId: resolvedPunto,
         salidaDeBase,
         retornoABase,
         expectedUpdatedAt: !isNew ? expectedUpdatedAt : undefined,
-        filas: filas.map((f) => ({
-          hora: f.hora || null,
-          direccion: f.direccion,
-          pasajeroNombre: f.pasajeroNombre,
-          pasajeroId: f.pasajeroId || null,
-          destinoId: f.destinoId || null,
-          accion: f.accion,
-          trasbordoHacia: f.accion === 'TRASBORDO' ? f.trasbordoHacia || null : null,
-          lat: f.lat,
-          lon: f.lon,
-          usarCoordsParaChofer: f.usarCoordsParaChofer,
-        })),
+        filas: filas.map((f) => {
+          const esTrasbordo = f.accion === 'TRASBORDO';
+          const destinoId =
+            esTrasbordo && f.trasbordoPuntoMode === 'direccion'
+              ? null
+              : f.destinoId || null;
+          return {
+            hora: f.hora || null,
+            direccion: f.direccion,
+            pasajeroNombre:
+              esTrasbordo && f.trasbordoSujeto === 'CELADORA'
+                ? opts.celadoras.find((c) => c.id === celadoraId)?.username ||
+                  f.pasajeroNombre ||
+                  'Celadora'
+                : f.pasajeroNombre,
+            pasajeroId:
+              esTrasbordo && f.trasbordoSujeto === 'CELADORA'
+                ? null
+                : f.pasajeroId || null,
+            destinoId,
+            accion: f.accion,
+            trasbordoHacia: esTrasbordo ? f.trasbordoHacia || null : null,
+            trasbordoSujeto: esTrasbordo ? f.trasbordoSujeto || null : null,
+            trasbordoTransporteId: esTrasbordo
+              ? f.trasbordoTransporteId || null
+              : null,
+            lat: f.lat,
+            lon: f.lon,
+            usarCoordsParaChofer: f.usarCoordsParaChofer,
+          };
+        }),
       };
 
       const saveOnce = async (forceReassign: boolean) =>
@@ -1231,6 +1293,8 @@ export function GrillaTablero({
               destinoId: string | null;
               accion: AccionParada;
               trasbordoHacia: string | null;
+              trasbordoSujeto?: TrasbordoSujeto | string | null;
+              trasbordoTransporteId?: string | null;
             }[];
           };
         };
@@ -1248,21 +1312,19 @@ export function GrillaTablero({
       setPuntoMode('ninguno');
       setPuntoEncuentroId('');
       setFilas(
-        s.filas.map((f) => ({
-          clientId: newClientId(),
-          tipoParada: f.tipoParada,
-          hora: f.hora ?? '',
-          direccion: f.direccion,
-          pasajeroNombre: f.pasajeroNombre,
-          detalleManual: false,
-          pasajeroId: f.pasajeroId ?? '',
-          destinoId: f.destinoId ?? '',
-          accion: f.accion,
-          trasbordoHacia: f.trasbordoHacia ?? '',
-          lat: null,
-          lon: null,
-          usarCoordsParaChofer: false,
-        })),
+        s.filas.map((f) => {
+          const mapped = mapGrillaFilaToForm({
+            ...f,
+            trasbordoHacia: f.trasbordoHacia,
+            trasbordoSujeto: f.trasbordoSujeto,
+            trasbordoTransporteId: f.trasbordoTransporteId,
+          });
+          return {
+            ...mapped,
+            clientId: newClientId(),
+            detalleManual: false,
+          };
+        }),
       );
       popup.success(body.message ?? 'Salida armada desde Ingresos.');
     } catch {
@@ -2008,7 +2070,13 @@ export function GrillaTablero({
                   </span>
 
                   <div className="form-group grilla-fila__hora">
-                    <label>Hora{fila.tipoParada === 'destino' ? '' : ' (opc.)'}</label>
+                    <label>
+                      Hora
+                      {fila.tipoParada === 'destino' ||
+                      (fila.accion === 'TRASBORDO' && fila.trasbordoPuntoMode === 'destino')
+                        ? ''
+                        : ' (opc.)'}
+                    </label>
                     <input
                       type="time"
                       value={fila.hora}
@@ -2019,7 +2087,11 @@ export function GrillaTablero({
                           ),
                         )
                       }
-                      required={fila.tipoParada === 'destino'}
+                      required={
+                        fila.tipoParada === 'destino' ||
+                        (fila.accion === 'TRASBORDO' &&
+                          fila.trasbordoPuntoMode === 'destino')
+                      }
                     />
                   </div>
 
@@ -2070,6 +2142,9 @@ export function GrillaTablero({
                                 ...f,
                                 accion,
                                 trasbordoHacia: '',
+                                trasbordoSujeto: '',
+                                trasbordoTransporteId: '',
+                                trasbordoPuntoMode: 'destino',
                                 pasajeroNombre: buildDetalleDestino({
                                   destinoNombre: destino?.nombre ?? f.pasajeroNombre,
                                   accion,
@@ -2080,10 +2155,22 @@ export function GrillaTablero({
                                 }),
                               };
                             }
+                            if (accion === 'TRASBORDO') {
+                              return {
+                                ...f,
+                                accion,
+                                tipoParada: 'trasbordo',
+                                trasbordoSujeto: f.trasbordoSujeto || 'PASAJERO',
+                                trasbordoPuntoMode: f.destinoId ? 'destino' : f.trasbordoPuntoMode || 'destino',
+                              };
+                            }
                             return {
                               ...f,
                               accion,
-                              trasbordoHacia: accion === 'TRASBORDO' ? f.trasbordoHacia : '',
+                              trasbordoHacia: '',
+                              trasbordoSujeto: '',
+                              trasbordoTransporteId: '',
+                              trasbordoPuntoMode: 'destino',
                             };
                           }),
                         );
@@ -2114,20 +2201,210 @@ export function GrillaTablero({
                   </div>
 
                   {fila.accion === 'TRASBORDO' && (
-                    <div className="form-group grilla-fila__trasbordo">
-                      <label>Trasbordo hacia</label>
-                      <input
-                        value={fila.trasbordoHacia}
-                        onChange={(e) =>
-                          setFilas((prev) =>
-                            prev.map((f, i) =>
-                              i === index ? { ...f, trasbordoHacia: e.target.value } : f,
-                            ),
-                          )
-                        }
-                        placeholder="Nombre del otro vehículo"
-                        required
-                      />
+                    <div className="form-group grilla-fila__trasbordo grilla-fila__trasbordo--bloque">
+                      <label>Trasbordo</label>
+                      <div className="grilla-trasbordo-fields">
+                        <div className="form-group">
+                          <label>Quién</label>
+                          <select
+                            value={fila.trasbordoSujeto || 'PASAJERO'}
+                            onChange={(e) => {
+                              const sujeto = e.target.value as TrasbordoSujeto;
+                              setFilas((prev) =>
+                                prev.map((f, i) => {
+                                  if (i !== index) return f;
+                                  if (sujeto === 'CELADORA') {
+                                    const cel =
+                                      opts.celadoras.find((c) => c.id === celadoraId)?.username ||
+                                      '';
+                                    return {
+                                      ...f,
+                                      trasbordoSujeto: sujeto,
+                                      pasajeroId: '',
+                                      pasajeroNombre: cel || f.pasajeroNombre,
+                                    };
+                                  }
+                                  return { ...f, trasbordoSujeto: sujeto };
+                                }),
+                              );
+                              if (sujeto === 'CELADORA' && celadoraId) {
+                                setCeladoraHaceTrasbordo(true);
+                              }
+                            }}
+                          >
+                            <option value="PASAJERO">Pasajero</option>
+                            <option value="CELADORA">Celadora</option>
+                          </select>
+                        </div>
+
+                        {fila.trasbordoSujeto === 'CELADORA' ? (
+                          <div className="form-group">
+                            <label>Celadora</label>
+                            <input
+                              value={
+                                opts.celadoras.find((c) => c.id === celadoraId)?.username ||
+                                (celadoraId ? 'Celadora asignada' : '')
+                              }
+                              readOnly
+                              placeholder="Asigná una celadora arriba"
+                            />
+                            {!celadoraId && (
+                              <small className="panel-card__desc" style={{ color: 'var(--color-danger, #b42318)' }}>
+                                Asigná una celadora a la grilla.
+                              </small>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="form-group">
+                            <label>Pasajero</label>
+                            <select
+                              value={fila.pasajeroId}
+                              onChange={(e) => {
+                                const pid = e.target.value;
+                                const p = opts.pasajeros.find((x) => x.id === pid);
+                                setFilas((prev) =>
+                                  prev.map((f, i) =>
+                                    i === index
+                                      ? {
+                                          ...f,
+                                          pasajeroId: pid,
+                                          pasajeroNombre: p?.nombre || f.pasajeroNombre,
+                                        }
+                                      : f,
+                                  ),
+                                );
+                              }}
+                            >
+                              <option value="">Elegí pasajero…</option>
+                              {opts.pasajeros
+                                .filter(
+                                  (p) =>
+                                    p.id === fila.pasajeroId ||
+                                    filas.some((x) => x.pasajeroId === p.id) ||
+                                    !usedPasajeroIds.has(p.id),
+                                )
+                                .map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.nombre}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                        )}
+
+                        <div className="form-group">
+                          <label>Hacia vehículo</label>
+                          <select
+                            value={fila.trasbordoTransporteId}
+                            onChange={(e) => {
+                              const tid = e.target.value;
+                              const t = opts.transportes.find((x) => x.id === tid);
+                              setFilas((prev) =>
+                                prev.map((f, i) =>
+                                  i === index
+                                    ? {
+                                        ...f,
+                                        trasbordoTransporteId: tid,
+                                        trasbordoHacia: t?.nombre || '',
+                                      }
+                                    : f,
+                                ),
+                              );
+                            }}
+                            required
+                          >
+                            <option value="">Elegí vehículo…</option>
+                            {opts.transportes
+                              .filter((t) => t.id !== transporteId)
+                              .map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.nombre}
+                                  {t.zonaNombre ? ` (${t.zonaNombre})` : ''}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div className="form-group">
+                          <label>Punto</label>
+                          <select
+                            value={fila.trasbordoPuntoMode}
+                            onChange={(e) => {
+                              const mode = e.target.value as 'destino' | 'direccion';
+                              setFilas((prev) =>
+                                prev.map((f, i) => {
+                                  if (i !== index) return f;
+                                  if (mode === 'direccion') {
+                                    return {
+                                      ...f,
+                                      trasbordoPuntoMode: mode,
+                                      destinoId: '',
+                                    };
+                                  }
+                                  return { ...f, trasbordoPuntoMode: mode };
+                                }),
+                              );
+                            }}
+                          >
+                            <option value="destino">Destino</option>
+                            <option value="direccion">Dirección libre</option>
+                          </select>
+                        </div>
+
+                        {fila.trasbordoPuntoMode === 'destino' ? (
+                          <div className="form-group">
+                            <label>Destino</label>
+                            <select
+                              value={fila.destinoId}
+                              onChange={(e) => {
+                                const did = e.target.value;
+                                const d = opts.destinos.find((x) => x.id === did);
+                                setFilas((prev) =>
+                                  prev.map((f, i) =>
+                                    i === index
+                                      ? {
+                                          ...f,
+                                          destinoId: did,
+                                          direccion: d?.domicilio || f.direccion,
+                                          lat: d?.lat ?? f.lat,
+                                          lon: d?.lon ?? f.lon,
+                                          usarCoordsParaChofer: Boolean(
+                                            d?.usarCoordsParaChofer,
+                                          ),
+                                        }
+                                      : f,
+                                  ),
+                                );
+                              }}
+                            >
+                              <option value="">Elegí destino…</option>
+                              {opts.destinos.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="form-group">
+                            <label>Dirección</label>
+                            <input
+                              value={fila.direccion}
+                              onChange={(e) =>
+                                setFilas((prev) =>
+                                  prev.map((f, i) =>
+                                    i === index
+                                      ? { ...f, direccion: e.target.value }
+                                      : f,
+                                  ),
+                                )
+                              }
+                              placeholder="Dirección del punto de encuentro"
+                              required
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
