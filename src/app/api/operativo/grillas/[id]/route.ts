@@ -8,6 +8,7 @@ import {
   findGrillaOperativa,
   grillaInclude,
 } from '@/lib/operativo-grilla';
+import { mensajeAsistenciaIncompleta } from '@/lib/operativo.utils';
 import { hasRole } from '@/lib/roles';
 
 type Params = { params: Promise<{ id: string }> };
@@ -70,44 +71,33 @@ export async function POST(request: Request, { params }: Params) {
         return NextResponse.json({ message: 'No sos la celadora de esta grilla.' }, { status: 403 });
       }
       if (body.action === 'iniciar') {
-        if (grilla.celadoraInicioAt) {
-          return NextResponse.json({ message: 'La asistencia ya fue iniciada.' }, { status: 400 });
-        }
-        // Celadora no mueve EN_CURSO/FINALIZADA; puede iniciar aunque el chofer ya finalizó.
-        if (
-          grilla.estado !== 'APROBADA' &&
-          grilla.estado !== 'EN_CURSO' &&
-          grilla.estado !== 'FINALIZADA'
-        ) {
-          return NextResponse.json(
-            { message: 'La grilla aún no está lista para operar.' },
-            { status: 400 },
-          );
-        }
-        if (grilla.cierreTipo === 'FORZADO_ADMIN' || grilla.cierreTipo === 'INTERRUMPIDO') {
-          return NextResponse.json(
-            { message: 'Esta jornada fue cerrada por Admin y no se puede operar.' },
-            { status: 400 },
-          );
-        }
-        const updated = await prisma.grilla.update({
-          where: { id },
-          data: { celadoraInicioAt: now },
-          include: grillaInclude,
-        });
-        return NextResponse.json({
-          data: updated,
-          message: 'Asistencia iniciada.',
-        });
-      }
-      if (!grilla.celadoraInicioAt) {
         return NextResponse.json(
-          { message: 'Primero tenés que iniciar la asistencia (Tomar asistencia).' },
+          {
+            message:
+              'La celadora ya no inicia asistencia. Marcá la lista y usá Enviar cuando termines.',
+          },
           { status: 400 },
         );
       }
+      // Enviar = bloquear lista (celadoraFinAt) y habilitar informe.
       if (grilla.celadoraFinAt) {
-        return NextResponse.json({ message: 'La asistencia ya fue finalizada.' }, { status: 400 });
+        return NextResponse.json({ message: 'La lista ya fue enviada.' }, { status: 400 });
+      }
+      if (grilla.informeCeladora) {
+        return NextResponse.json(
+          { message: 'Tu jornada ya está cerrada.' },
+          { status: 400 },
+        );
+      }
+      if (
+        grilla.estado !== 'APROBADA' &&
+        grilla.estado !== 'EN_CURSO' &&
+        grilla.estado !== 'FINALIZADA'
+      ) {
+        return NextResponse.json(
+          { message: 'La grilla aún no está lista para operar.' },
+          { status: 400 },
+        );
       }
       if (grilla.cierreTipo === 'FORZADO_ADMIN' || grilla.cierreTipo === 'INTERRUMPIDO') {
         return NextResponse.json(
@@ -115,12 +105,23 @@ export async function POST(request: Request, { params }: Params) {
           { status: 400 },
         );
       }
+      const incompleta = mensajeAsistenciaIncompleta(grilla.filas, grilla.asistencias);
+      if (incompleta) {
+        return NextResponse.json({ message: incompleta }, { status: 400 });
+      }
       const updated = await prisma.grilla.update({
         where: { id },
-        data: { celadoraFinAt: now },
+        data: {
+          celadoraFinAt: now,
+          // Compatibilidad: si nunca hubo inicio, dejamos marca de envío.
+          ...(grilla.celadoraInicioAt ? {} : { celadoraInicioAt: now }),
+        },
         include: grillaInclude,
       });
-      return NextResponse.json({ data: updated, message: 'Asistencia finalizada.' });
+      return NextResponse.json({
+        data: updated,
+        message: 'Lista enviada. Completá el informe para cerrar la jornada.',
+      });
     }
 
     // CHOFER

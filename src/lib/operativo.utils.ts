@@ -150,6 +150,28 @@ export function extractItemsParaControl(
   return Array.from(map.values());
 }
 
+/** Null si la lista está completa; si no, mensaje de lo que falta. */
+export function mensajeAsistenciaIncompleta(
+  filas: Parameters<typeof extractItemsParaControl>[0],
+  asistencias: { pasajeroNombre: string }[],
+): string | null {
+  const items = extractItemsParaControl(filas);
+  if (items.length === 0) {
+    return 'No hay ítems para controlar en esta grilla.';
+  }
+  const marked = new Set(
+    asistencias.map((a) => a.pasajeroNombre.trim().toLowerCase()).filter(Boolean),
+  );
+  const faltan = items.filter((i) => !marked.has(i.pasajeroNombre.trim().toLowerCase()));
+  if (faltan.length === 0) return null;
+  const muestra = faltan
+    .slice(0, 3)
+    .map((i) => i.pasajeroNombre)
+    .join(', ');
+  const extra = faltan.length > 3 ? ` y ${faltan.length - 3} más` : '';
+  return `Completá la lista antes de enviar. Falta marcar: ${muestra}${extra}.`;
+}
+
 /** @deprecated usar extractItemsParaControl */
 export function extractPasajerosParaAsistencia(
   filas: {

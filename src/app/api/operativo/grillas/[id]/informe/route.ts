@@ -61,7 +61,7 @@ export async function PATCH(request: Request, { params }: Params) {
       }
       if (!grilla.celadoraFinAt) {
         return NextResponse.json(
-          { message: 'Finalizá la asistencia antes de cargar el informe.' },
+          { message: 'Enviá la lista completa antes de cargar el informe.' },
           { status: 400 },
         );
       }

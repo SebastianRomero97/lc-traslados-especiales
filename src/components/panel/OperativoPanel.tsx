@@ -15,6 +15,7 @@ import {
   extractItemsParaControl,
   formatDuration,
   labelsParaControl,
+  mensajeAsistenciaIncompleta,
   navUrlsParaChofer,
   NIVELES_COMBUSTIBLE,
   NIVEL_COMBUSTIBLE_LABEL,
@@ -266,6 +267,13 @@ export function OperativoPanel({
 
   const iniciarFin = async (action: 'iniciar' | 'finalizar') => {
     if (!selected) return;
+    if (rol === 'CELADORA' && action === 'finalizar') {
+      const incompleta = mensajeAsistenciaIncompleta(selected.filas, selected.asistencias);
+      if (incompleta) {
+        popup.error(incompleta);
+        return;
+      }
+    }
     setBusy(true);
     try {
       const response = await fetch(`/api/operativo/grillas/${selected.id}`, {
@@ -361,7 +369,7 @@ export function OperativoPanel({
     }
   };
 
-  const inicioAt = rol === 'CELADORA' ? selected?.celadoraInicioAt : selected?.choferInicioAt;
+  const inicioAt = selected?.choferInicioAt;
   const finAt = rol === 'CELADORA' ? selected?.celadoraFinAt : selected?.choferFinAt;
   const jornadaCerrada =
     rol === 'CELADORA'
@@ -377,6 +385,10 @@ export function OperativoPanel({
     (!selected?.conCeladora || Boolean(choferForm.celadora.trim()));
 
   const itemsControl = selected ? extractItemsParaControl(selected.filas) : [];
+  const listaIncompletaMsg = selected
+    ? mensajeAsistenciaIncompleta(selected.filas, selected.asistencias)
+    : null;
+  const listaCompleta = Boolean(selected) && !listaIncompletaMsg;
 
   const asistenciaMap = useMemo(() => {
     const map = new Map<string, Asistencia>();
@@ -534,54 +546,59 @@ export function OperativoPanel({
                 )}
                 {selected.nota && <p className="grilla-preview__nota">{selected.nota}</p>}
 
-                <div className="operativo-reloj">
-                  <div>
-                    <strong>
-                      {rol === 'CELADORA' ? 'Asistencia (pasajeros)' : 'Recorrido (viaje)'}
-                    </strong>
-                    <p className="panel-card__desc" style={{ marginBottom: 0 }}>
-                      {inicioAt
-                        ? `Inicio: ${new Date(inicioAt).toLocaleString('es-AR')}`
-                        : 'Aún no iniciado'}
-                      {finAt ? ` · Fin: ${new Date(finAt).toLocaleString('es-AR')}` : ''}
-                      {formatDuration(inicioAt, finAt)
-                        ? ` · Duración: ${formatDuration(inicioAt, finAt)}`
-                        : ''}
-                    </p>
-                    {rol === 'CHOFER' && (
+                {rol === 'CHOFER' && (
+                  <div className="operativo-reloj">
+                    <div>
+                      <strong>Recorrido (viaje)</strong>
+                      <p className="panel-card__desc" style={{ marginBottom: 0 }}>
+                        {inicioAt
+                          ? `Inicio: ${new Date(inicioAt).toLocaleString('es-AR')}`
+                          : 'Aún no iniciado'}
+                        {finAt ? ` · Fin: ${new Date(finAt).toLocaleString('es-AR')}` : ''}
+                        {formatDuration(inicioAt, finAt)
+                          ? ` · Duración: ${formatDuration(inicioAt, finAt)}`
+                          : ''}
+                      </p>
                       <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
                         El chofer inicia y finaliza el recorrido (estado En curso / Finalizada).
                       </p>
-                    )}
-                    {rol === 'CELADORA' && (
-                      <p className="panel-card__desc" style={{ margin: '0.25rem 0 0' }}>
-                        La asistencia es independiente del estado del viaje del chofer.
+                    </div>
+                    <div className="admin-actions">
+                      {!inicioAt && !jornadaCerrada && (
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          disabled={busy}
+                          onClick={() => void iniciarFin('iniciar')}
+                        >
+                          Iniciar recorrido
+                        </button>
+                      )}
+                      {jornadaCerrada ? (
+                        <span className="role-badge role-badge--celadora">Jornada cerrada</span>
+                      ) : inicioAt && finAt ? (
+                        <span className="role-badge role-badge--chofer">Pendiente informe</span>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+
+                {rol === 'CELADORA' && (
+                  <div className="admin-actions" style={{ marginTop: '0.75rem' }}>
+                    {jornadaCerrada ? (
+                      <span className="role-badge role-badge--celadora">Jornada cerrada</span>
+                    ) : finAt ? (
+                      <span className="role-badge role-badge--chofer">Lista enviada · Pendiente informe</span>
+                    ) : (
+                      <p className="panel-card__desc" style={{ margin: 0 }}>
+                        Marcá la asistencia de cada pasajero y destino. Cuando termines, usá Enviar.
                       </p>
                     )}
                   </div>
-                  <div className="admin-actions">
-                    {!inicioAt && !jornadaCerrada && (
-                      <button
-                        type="button"
-                        className="btn btn--primary"
-                        disabled={busy}
-                        onClick={() => void iniciarFin('iniciar')}
-                      >
-                        {rol === 'CELADORA' ? 'Tomar asistencia' : 'Iniciar recorrido'}
-                      </button>
-                    )}
-                    {jornadaCerrada ? (
-                      <span className="role-badge role-badge--celadora">
-                        {rol === 'CELADORA' ? 'Asistencia cerrada' : 'Jornada cerrada'}
-                      </span>
-                    ) : inicioAt && finAt ? (
-                      <span className="role-badge role-badge--chofer">Pendiente informe</span>
-                    ) : null}
-                  </div>
-                </div>
+                )}
               </section>
 
-              {/* Celadora: el informe va arriba al finalizar, para que no pase desapercibido */}
+              {/* Celadora: informe tras Enviar */}
               {rol === 'CELADORA' && finAt && (
                 <section className="panel-card panel-card--informe-destacado">
                   <h2>Informe de observaciones</h2>
@@ -602,8 +619,8 @@ export function OperativoPanel({
                   ) : (
                     <>
                       <p className="panel-card__desc">
-                        Al guardar el informe se cierra tu asistencia (punto de no retorno). Visible
-                        para Admin y Administración.
+                        La lista ya no se puede editar. Al guardar el informe se cierra tu jornada
+                        (punto de no retorno). Visible para Admin y Administración.
                       </p>
                       <textarea
                         className="operativo-informe"
@@ -630,7 +647,9 @@ export function OperativoPanel({
                   <h2>Ruta</h2>
                   <p className="panel-card__desc">
                     Marcá asistencia una vez por pasajero. En destinos: Completado u Observación.
-                    {!inicioAt && ' Podés registrar desde el inicio del recorrido.'}
+                    {finAt
+                      ? ' La lista ya fue enviada.'
+                      : ' Cuando esté completa, tocá Enviar.'}
                   </p>
                   {selected.filas.length === 0 ? (
                     <p className="panel-card__desc">Esta grilla no tiene paradas.</p>
@@ -815,15 +834,20 @@ export function OperativoPanel({
                     </ul>
                   )}
 
-                  {inicioAt && !finAt && !jornadaCerrada && (
+                  {!finAt && !jornadaCerrada && (
                     <div className="operativo-finalizar-bar">
+                      {!listaCompleta && listaIncompletaMsg && (
+                        <p className="panel-card__desc" style={{ marginBottom: '0.5rem' }}>
+                          {listaIncompletaMsg}
+                        </p>
+                      )}
                       <button
                         type="button"
-                        className="btn btn--danger"
-                        disabled={busy}
+                        className="btn btn--primary"
+                        disabled={busy || !listaCompleta}
                         onClick={() => void iniciarFin('finalizar')}
                       >
-                        Finalizar asistencia
+                        Enviar
                       </button>
                     </div>
                   )}

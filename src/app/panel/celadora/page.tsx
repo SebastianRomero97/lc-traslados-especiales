@@ -11,7 +11,7 @@ export default async function CeladoraPanelPage() {
       <section className="panel-intro">
         <h2>{welcomeHeading(user.username)}</h2>
         <p>
-          Revisá tu grilla, iniciá/finalizá el tramo de pasajeros, registrá asistencia y completá el
+          Revisá tu grilla, pasá lista de asistencia, enviá cuando esté completa y cerrá con el
           informe.
         </p>
       </section>

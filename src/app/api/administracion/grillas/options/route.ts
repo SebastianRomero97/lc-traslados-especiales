@@ -217,6 +217,24 @@ export async function GET(request: Request) {
     });
   }
 
+  // Trasbordo: siempre todos los vehículos activos (cualquier zona).
+  const transportesTrasbordoById = new Map<string, TransporteOut>();
+  for (const area of areas) {
+    const meta = zonaMeta(area.id, area.nombre);
+    for (const link of area.transportes) {
+      const t = link.transporte;
+      if (!t.active) continue;
+      preferCurrent(transportesTrasbordoById, t.id, {
+        id: t.id,
+        nombre: t.nombre,
+        tipo: t.tipo,
+        choferes: t.choferes,
+        celadoras: t.celadoras.filter((c) => c.user.active).map((c) => c.user),
+        ...meta,
+      });
+    }
+  }
+
   const sortActualFirst = <T extends ZonaMeta & { nombre?: string; username?: string }>(
     list: T[],
   ) =>
@@ -230,6 +248,8 @@ export async function GET(request: Request) {
     data: {
       area: { id: current.id, nombre: current.nombre },
       transportes: sortActualFirst([...transportesById.values()]),
+      /** Pool completo para “Hacia vehículo” en trasbordo (no depende de zona/híbrida). */
+      transportesTrasbordo: sortActualFirst([...transportesTrasbordoById.values()]),
       celadoras: sortActualFirst([...celadorasById.values()]),
       pasajeros: sortActualFirst([...pasajerosById.values()]),
       destinos: sortActualFirst([...destinosById.values()]),

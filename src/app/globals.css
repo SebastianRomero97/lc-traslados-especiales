@@ -4959,4 +4959,128 @@ button, input, select, textarea {
   }
 }
 
+/* —— Presencia del día (Administración) —— */
+.presencia-dia__resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.presencia-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.presencia-chip--presente,
+.presencia-dia__item--presente {
+  --presencia-bg: #dcfce7;
+  --presencia-fg: #166534;
+  --presencia-bd: #86efac;
+}
+
+.presencia-chip--ausente,
+.presencia-dia__item--ausente {
+  --presencia-bg: #f3f4f6;
+  --presencia-fg: #4b5563;
+  --presencia-bd: #d1d5db;
+}
+
+.presencia-chip--retirado,
+.presencia-dia__item--retirado {
+  --presencia-bg: #ffedd5;
+  --presencia-fg: #c2410c;
+  --presencia-bd: #fdba74;
+}
+
+.presencia-chip--engrilla,
+.presencia-dia__item--en_grilla {
+  --presencia-bg: #dbeafe;
+  --presencia-fg: #1d4ed8;
+  --presencia-bd: #93c5fd;
+}
+
+.presencia-chip {
+  background: var(--presencia-bg, #f3f4f6);
+  color: var(--presencia-fg, #374151);
+  border-color: var(--presencia-bd, #d1d5db);
+}
+
+.presencia-dia__lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.presencia-dia__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--presencia-bd, var(--color-border));
+  border-left: 4px solid var(--presencia-bd, var(--color-border));
+  background: color-mix(in srgb, var(--presencia-bg, #fff) 70%, #fff);
+  border-radius: 6px;
+}
+
+.presencia-dia__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.presencia-dia__meta {
+  font-size: 0.82rem;
+  color: var(--color-muted, #6b7280);
+}
+
+.presencia-dia__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.presencia-btn.is-active {
+  font-weight: 700;
+}
+
+.presencia-btn--presente.is-active {
+  background: #166534;
+  border-color: #166534;
+  color: #fff;
+}
+
+.presencia-btn--ausente.is-active {
+  background: #6b7280;
+  border-color: #6b7280;
+  color: #fff;
+}
+
+.presencia-btn--retirado.is-active {
+  background: #c2410c;
+  border-color: #c2410c;
+  color: #fff;
+}
+
+.presencia-dia__override {
+  width: 100%;
+  color: var(--color-muted, #6b7280);
+}
+
+.grilla-recurso-card .presencia-chip {
+  margin-top: 0.25rem;
+}
+
 

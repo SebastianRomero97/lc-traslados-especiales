@@ -30,6 +30,11 @@ import {
   osrmTravelGapsMinutes,
   type MapaParada,
 } from '@/lib/osm-maps';
+import {
+  labelEstadoPresencia,
+  mensajeAvisoPresenciaSalida,
+  type EstadoPresencia,
+} from '@/lib/presencia-dia.utils';
 
 const GrillaMapa = dynamic(
   () => import('@/components/panel/GrillaMapa').then((m) => m.GrillaMapa),
@@ -79,6 +84,15 @@ export type GrillaTableroOptions = {
     tipo: string;
     choferes: { id: string; username: string }[];
     celadoras: { id: string; username: string }[];
+    zonaId?: string;
+    zonaNombre?: string;
+    esZonaActual?: boolean;
+  }[];
+  /** Todos los vehículos activos (cualquier zona) para trasbordo. */
+  transportesTrasbordo?: {
+    id: string;
+    nombre: string;
+    tipo: string;
     zonaId?: string;
     zonaNombre?: string;
     esZonaActual?: boolean;
@@ -207,6 +221,7 @@ type AreaOption = { id: string; nombre: string };
 
 const EMPTY_OPTIONS: GrillaTableroOptions = {
   transportes: [],
+  transportesTrasbordo: [],
   celadoras: [],
   pasajeros: [],
   destinos: [],
@@ -330,6 +345,13 @@ export function GrillaTablero({
   >(null);
   const [optimizarToken, setOptimizarToken] = useState(0);
   const [filasAntesOptimizar, setFilasAntesOptimizar] = useState<FilaBoard[] | null>(null);
+  /** Presencia del día (avisos al armar salidas). */
+  const [presenciaByPasajeroId, setPresenciaByPasajeroId] = useState<
+    Record<
+      string,
+      { estado: EstadoPresencia; enGrilla: boolean; pasajeroNombre: string }
+    >
+  >({});
   /** Reorden de filas con pointer (no HTML5): así Chrome permite la rueda. */
   const [reorderDragId, setReorderDragId] = useState<string | null>(null);
   const paradasListRef = useRef<HTMLDivElement>(null);
@@ -469,6 +491,52 @@ export function GrillaTablero({
   }, [areaId, zonaMode]);
 
   useEffect(() => {
+    if (!fecha || !isSalidaItinerario(tipoItinerario)) {
+      setPresenciaByPasajeroId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/administracion/presencia-dia?fecha=${encodeURIComponent(fecha)}`,
+        );
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as {
+          data: {
+            items: {
+              pasajeroId: string | null;
+              estado: EstadoPresencia;
+              enGrilla: boolean;
+              pasajeroNombre: string;
+            }[];
+          };
+        };
+        if (cancelled) return;
+        const map: Record<
+          string,
+          { estado: EstadoPresencia; enGrilla: boolean; pasajeroNombre: string }
+        > = {};
+        for (const i of body.data.items) {
+          if (!i.pasajeroId) continue;
+          map[i.pasajeroId] = {
+            estado: i.estado,
+            enGrilla: i.enGrilla,
+            pasajeroNombre: i.pasajeroNombre,
+          };
+        }
+        setPresenciaByPasajeroId(map);
+      } catch {
+        /* silencioso: el aviso es ayuda, no bloquea */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, tipoItinerario]);
+
+  useEffect(() => {
     if (!options) return;
     if (skipPruneRef.current) {
       skipPruneRef.current = false;
@@ -509,6 +577,14 @@ export function GrillaTablero({
     () => opts.transportes.find((t) => t.id === transporteId) ?? null,
     [opts.transportes, transporteId],
   );
+  /** Vehículos de destino de trasbordo: siempre todas las zonas. */
+  const transportesParaTrasbordo = useMemo(() => {
+    const list =
+      opts.transportesTrasbordo && opts.transportesTrasbordo.length > 0
+        ? opts.transportesTrasbordo
+        : opts.transportes;
+    return list.filter((t) => t.id !== transporteId);
+  }, [opts.transportesTrasbordo, opts.transportes, transporteId]);
   const chofer = useMemo(
     () =>
       opts.choferes.find((c) => c.id === choferId) ??
@@ -706,6 +782,13 @@ export function GrillaTablero({
     if (usedPasajeroIds.has(pasajeroId)) return;
     const p = opts.pasajeros.find((x) => x.id === pasajeroId);
     if (!p) return;
+    if (isSalidaItinerario(tipoItinerario)) {
+      const pr = presenciaByPasajeroId[pasajeroId];
+      if (pr) {
+        const aviso = mensajeAvisoPresenciaSalida(pr);
+        if (aviso) popup.warning(aviso, 'Presencia del día');
+      }
+    }
     const accion = accionPorTipoParada('pasajero', tipoItinerario);
     setFilas((prev) => [
       ...prev,
@@ -1501,6 +1584,31 @@ export function GrillaTablero({
             <strong>{p.nombre}</strong>
             <small>{p.direccion}</small>
             {recursoZonaBadge(p.zonaNombre, p.esZonaActual)}
+            {isSalidaItinerario(tipoItinerario) &&
+              presenciaByPasajeroId[p.id] &&
+              (() => {
+                const pr = presenciaByPasajeroId[p.id]!;
+                if (pr.enGrilla) {
+                  return (
+                    <span className="presencia-chip presencia-chip--engrilla">En grilla</span>
+                  );
+                }
+                if (pr.estado === 'AUSENTE') {
+                  return (
+                    <span className="presencia-chip presencia-chip--ausente">Ausente</span>
+                  );
+                }
+                if (pr.estado === 'RETIRADO') {
+                  return (
+                    <span className="presencia-chip presencia-chip--retirado">Retirado</span>
+                  );
+                }
+                return (
+                  <span className="presencia-chip presencia-chip--presente">
+                    {labelEstadoPresencia(pr.estado)}
+                  </span>
+                );
+              })()}
           </div>
         );
       });
@@ -2298,7 +2406,7 @@ export function GrillaTablero({
                             value={fila.trasbordoTransporteId}
                             onChange={(e) => {
                               const tid = e.target.value;
-                              const t = opts.transportes.find((x) => x.id === tid);
+                              const t = transportesParaTrasbordo.find((x) => x.id === tid);
                               setFilas((prev) =>
                                 prev.map((f, i) =>
                                   i === index
@@ -2314,14 +2422,12 @@ export function GrillaTablero({
                             required
                           >
                             <option value="">Elegí vehículo…</option>
-                            {opts.transportes
-                              .filter((t) => t.id !== transporteId)
-                              .map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.nombre}
-                                  {t.zonaNombre ? ` (${t.zonaNombre})` : ''}
-                                </option>
-                              ))}
+                            {transportesParaTrasbordo.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.nombre}
+                                {t.zonaNombre ? ` (${t.zonaNombre})` : ''}
+                              </option>
+                            ))}
                           </select>
                         </div>
 

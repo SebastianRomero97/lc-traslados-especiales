@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { AdministracionDashboard } from '@/components/panel/AdministracionDashboard';
 import { AdministracionGrillasManager } from '@/components/panel/AdministracionGrillasManager';
+import { AdministracionPresenciaDiaPanel } from '@/components/panel/AdministracionPresenciaDiaPanel';
 import { NovedadesVehiculoPanel } from '@/components/panel/NovedadesVehiculoPanel';
 import { InformeMetricasPanel } from '@/components/panel/InformeMetricasPanel';
 import { RespaldoHistorialPanel } from '@/components/panel/RespaldoHistorialPanel';
 import { PublicacionesBanner } from '@/components/panel/PublicacionesBanner';
 
-type Tab = 'areas' | 'grillas' | 'historial' | 'informe' | 'respaldo' | 'novedades';
+type Tab = 'areas' | 'grillas' | 'presencia' | 'historial' | 'informe' | 'respaldo' | 'novedades';
 
 export function AdministracionPanelTabs({
   canDelete = false,
@@ -42,6 +43,15 @@ export function AdministracionPanelTabs({
             onClick={() => setTab('grillas')}
           >
             Grillas
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={`admin-tabs__btn${tab === 'presencia' ? ' is-active' : ''}`}
+            aria-selected={tab === 'presencia'}
+            onClick={() => setTab('presencia')}
+          >
+            Presencia
           </button>
           <button
             type="button"
@@ -90,6 +100,7 @@ export function AdministracionPanelTabs({
               puedeAprobar={puedeAprobar}
             />
           )}
+          {tab === 'presencia' && <AdministracionPresenciaDiaPanel />}
           {tab === 'historial' && (
             <AdministracionGrillasManager
               modo="historial"

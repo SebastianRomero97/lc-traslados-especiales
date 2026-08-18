@@ -99,7 +99,7 @@ export async function PATCH(request: Request, { params }: Params) {
         {
           message:
             body.rol === 'CELADORA'
-              ? 'La asistencia ya fue finalizada. Solo falta el informe.'
+              ? 'La lista ya fue enviada. Solo falta el informe.'
               : 'El recorrido ya fue finalizado. Solo falta el informe.',
         },
         { status: 400 },
