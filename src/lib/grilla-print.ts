@@ -1,9 +1,10 @@
-import { formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
+import { formatAccionFila, formatFechaGrilla, labelTipoItinerario } from '@/lib/grilla.utils';
 import { labelTipoCierre } from '@/lib/grilla-estado';
 import {
   labelEstadoAsistenciaFicha,
   normalizeEstadoAsistenciaFicha,
 } from '@/lib/pasajero.utils';
+import { siteConfig } from '@/config/site.config';
 
 export type GrillaPrintInput = {
   nombre: string;
@@ -208,8 +209,184 @@ export function buildGrillaWhatsAppShareText(g: GrillaPrintInput): string {
     `${formatFechaGrilla(g.fecha)} · ${labelTipoItinerario(g.tipoItinerario)} · ${g.transporteNombre}`,
     `Zona: ${g.areaNombre}`,
     '',
-    'Te mando el PDF de la grilla (adjuntá el archivo descargado).',
+    'Te mando el PDF del itinerario (adjuntá el archivo descargado).',
   ].join('\n');
+}
+
+/** Datos para PDF de itinerario (WhatsApp). */
+export type GrillaItinerarioPrintInput = {
+  nombre: string;
+  fecha: string;
+  tipoItinerario: string;
+  areaNombre: string;
+  transporteNombre: string;
+  choferNombre: string;
+  celadoraNombre: string | null;
+  conCeladora: boolean;
+  logoUrl?: string;
+  filas: {
+    orden: number;
+    hora?: string | null;
+    direccion: string;
+    pasajeroNombre: string;
+    accion: string;
+    trasbordoHacia?: string | null;
+    trasbordoSujeto?: string | null;
+    destinoColor?: string | null;
+  }[];
+};
+
+const ITINERARIO_CSS = `
+  body{font-family:Arial,Helvetica,sans-serif;padding:16px;color:#111;line-height:1.3}
+  .it-wrap{border:1.5px solid #111}
+  .it-title{
+    background:#111;color:#fff;font-weight:700;font-size:13px;
+    text-align:center;padding:8px 10px;letter-spacing:0.02em;
+  }
+  .it-head{
+    display:flex;align-items:center;gap:10px;
+    background:#2e7d32;color:#fff;padding:8px 10px;
+    border-top:1.5px solid #111;
+  }
+  .it-head__logo{width:36px;height:36px;object-fit:contain;background:#fff;border-radius:50%;padding:2px}
+  .it-head__zona{flex:1;text-align:center;font-weight:700;font-size:13px;text-transform:uppercase}
+  .it-head__fecha{font-weight:700;font-size:12px;white-space:nowrap}
+  .it-resp{
+    display:flex;flex-wrap:wrap;align-items:stretch;
+    border-top:1.5px solid #111;
+  }
+  .it-resp__left{
+    flex:1;min-width:180px;background:#e67e22;color:#111;
+    font-weight:700;font-size:11px;padding:7px 10px;
+    text-transform:uppercase;
+  }
+  .it-resp__right{
+    min-width:100px;background:#2e7d32;color:#fff;
+    font-weight:700;font-size:12px;padding:7px 12px;
+    text-align:center;text-transform:uppercase;
+    border-left:1.5px solid #111;
+  }
+  table.itinerario{width:100%;border-collapse:collapse;font-size:11px;margin:0}
+  table.itinerario td{
+    border:1px solid #333;padding:5px 7px;vertical-align:top;
+  }
+  table.itinerario td:first-child{
+    width:52px;text-align:center;font-weight:700;white-space:nowrap;
+  }
+  table.itinerario td:last-child{width:38%}
+  .it-base{
+    background:#111;color:#fff;font-weight:700;font-size:11px;
+    text-align:center;padding:7px 10px;text-transform:uppercase;
+    border-top:1.5px solid #111;
+  }
+`;
+
+function logoSrcForPdf(logoUrl?: string): string {
+  if (logoUrl?.startsWith('http') || logoUrl?.startsWith('data:')) return logoUrl;
+  const path = logoUrl || siteConfig.logoSrc;
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${path.startsWith('/') ? path : `/${path}`}`;
+  }
+  return path;
+}
+
+/** HTML del itinerario operativo (formato planilla, solo WhatsApp PDF). */
+export function buildGrillaItinerarioBodyHtml(g: GrillaItinerarioPrintInput): string {
+  const tipo = labelTipoItinerario(g.tipoItinerario).toUpperCase();
+  const titulo = `ITINERARIO: ${tipo} "${g.transporteNombre.toUpperCase()}"`;
+  const responsables = g.conCeladora
+    ? `${g.choferNombre} + ${g.celadoraNombre ?? '—'}`.toUpperCase()
+    : `${g.choferNombre} (SIN CELADORA)`.toUpperCase();
+  const logo = logoSrcForPdf(g.logoUrl);
+
+  const filasHtml = g.filas
+    .map((f, index) => {
+      const esBase =
+        f.accion === 'SALIDA_BASE' ||
+        f.accion === 'RETORNO_BASE' ||
+        /base/i.test(f.pasajeroNombre) ||
+        /base/i.test(f.direccion);
+      const marca = f.hora?.trim() || String(f.orden || index + 1);
+      const accion = formatAccionFila({
+        accion: f.accion,
+        pasajeroNombre: f.pasajeroNombre,
+        trasbordoHacia: f.trasbordoHacia,
+        trasbordoSujeto: f.trasbordoSujeto,
+      });
+      const color = f.destinoColor?.trim();
+      const style =
+        color && /^#[0-9A-Fa-f]{3,8}$/.test(color)
+          ? `background:${color}22`
+          : esBase
+            ? 'background:#f3f4f6'
+            : '';
+      return `<tr style="${style}">
+        <td>${escapeHtml(marca)}</td>
+        <td>${escapeHtml(f.direccion.toUpperCase())}</td>
+        <td>${escapeHtml(accion)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `
+    <div class="it-wrap">
+      <div class="it-title">${escapeHtml(titulo)}</div>
+      <div class="it-head">
+        <img class="it-head__logo" src="${escapeHtml(logo)}" alt="LC" crossorigin="anonymous" />
+        <div class="it-head__zona">${escapeHtml(g.areaNombre.toUpperCase())}</div>
+        <div class="it-head__fecha">${escapeHtml(formatFechaGrilla(g.fecha))}</div>
+      </div>
+      <div class="it-resp">
+        <div class="it-resp__left">RESPONSABLES: ${escapeHtml(responsables)}</div>
+        <div class="it-resp__right">${escapeHtml(g.transporteNombre.toUpperCase())}</div>
+      </div>
+      <table class="itinerario">
+        <tbody>${filasHtml || '<tr><td colspan="3">Sin paradas en este itinerario.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+/** Genera y descarga PDF del itinerario (WhatsApp). */
+export async function downloadGrillaItinerarioPdf(
+  g: GrillaItinerarioPrintInput,
+): Promise<void> {
+  const html2pdf = (await import('html2pdf.js')).default;
+  const wrap = document.createElement('div');
+  wrap.style.position = 'fixed';
+  wrap.style.left = '-10000px';
+  wrap.style.top = '0';
+  wrap.style.width = '800px';
+  wrap.style.background = '#fff';
+  wrap.style.padding = '12px';
+  wrap.innerHTML = `<style>${ITINERARIO_CSS}</style>${buildGrillaItinerarioBodyHtml(g)}`;
+  document.body.appendChild(wrap);
+
+  const filename = `itinerario_${safePdfFilename({
+    nombre: g.nombre,
+    fecha: g.fecha,
+    tipoItinerario: g.tipoItinerario,
+    areaNombre: g.areaNombre,
+    transporteNombre: g.transporteNombre,
+    choferNombre: g.choferNombre,
+    celadoraNombre: g.celadoraNombre,
+    conCeladora: g.conCeladora,
+    filas: [],
+  }).replace(/^grilla_/, '')}`;
+
+  try {
+    await html2pdf()
+      .set({
+        margin: [8, 8, 8, 8],
+        filename,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, allowTaint: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      })
+      .from(wrap)
+      .save();
+  } finally {
+    wrap.remove();
+  }
 }
 
 /** Abre ventana de impresión sin noopener (evita que document.write falle). */

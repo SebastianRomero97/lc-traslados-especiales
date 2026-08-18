@@ -50,6 +50,7 @@ const grillaInclude = {
     include: {
       pasajero: { select: { id: true, nombre: true, direccion: true } },
       trasbordoTransporte: { select: { id: true, nombre: true, tipo: true } },
+      destino: { select: { id: true, nombre: true, color: true } },
     },
   },
   asistencias: {

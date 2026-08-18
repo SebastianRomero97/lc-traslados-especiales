@@ -21,10 +21,12 @@ import {
 } from '@/lib/grilla.utils';
 import {
   buildGrillaWhatsAppShareText,
-  downloadGrillaPdf,
+  downloadGrillaItinerarioPdf,
   openGrillaPrintWindow,
+  type GrillaItinerarioPrintInput,
   type GrillaPrintInput,
 } from '@/lib/grilla-print';
+import { siteConfig } from '@/config/site.config';
 import {
   grillaBloqueadaOperativa,
   normalizeEstadoGrilla,
@@ -390,7 +392,17 @@ export function AdministracionGrillasManager({
       chofer: { username: string };
       celadora: { username: string } | null;
       conCeladora: boolean;
-      filas: { pasajeroNombre: string; pasajeroId?: string | null }[];
+      filas: {
+        orden?: number;
+        hora?: string | null;
+        direccion?: string;
+        pasajeroNombre: string;
+        pasajeroId?: string | null;
+        accion?: string;
+        trasbordoHacia?: string | null;
+        trasbordoSujeto?: string | null;
+        destino?: { color?: string | null } | null;
+      }[];
       asistencias?: {
         pasajeroNombre: string;
         estado: string;
@@ -403,14 +415,38 @@ export function AdministracionGrillasManager({
     };
   };
 
+  const toItinerarioPrintInput = (
+    grilla: Awaited<ReturnType<typeof loadGrillaExport>>,
+  ): GrillaItinerarioPrintInput => ({
+    nombre: grilla.nombre,
+    fecha: grilla.fecha,
+    tipoItinerario: grilla.tipoItinerario,
+    areaNombre: grilla.area.nombre,
+    transporteNombre: grilla.transporte.nombre,
+    choferNombre: grilla.chofer.username,
+    celadoraNombre: grilla.celadora?.username ?? null,
+    conCeladora: grilla.conCeladora,
+    logoUrl: siteConfig.logoSrc,
+    filas: grilla.filas.map((f, i) => ({
+      orden: f.orden ?? i + 1,
+      hora: f.hora,
+      direccion: f.direccion ?? '',
+      pasajeroNombre: f.pasajeroNombre,
+      accion: f.accion ?? 'SUBE',
+      trasbordoHacia: f.trasbordoHacia,
+      trasbordoSujeto: f.trasbordoSujeto,
+      destinoColor: f.destino?.color ?? null,
+    })),
+  });
+
   const shareWhatsApp = async (grilla: GrillaListItem) => {
     try {
       const full = await loadGrillaExport(grilla.id);
-      const input = toPrintInput(full);
-      await downloadGrillaPdf(input);
-      const text = buildGrillaWhatsAppShareText(input);
+      const itinerario = toItinerarioPrintInput(full);
+      await downloadGrillaItinerarioPdf(itinerario);
+      const text = buildGrillaWhatsAppShareText(toPrintInput(full));
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-      popup.success('PDF descargado. Adjuntarlo en el chat de WhatsApp.');
+      popup.success('PDF del itinerario descargado. Adjuntarlo en el chat de WhatsApp.');
     } catch (error) {
       popup.error(
         error instanceof Error ? error.message : 'No se pudo preparar el PDF para WhatsApp.',

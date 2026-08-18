@@ -116,6 +116,28 @@ model User {
   novedadesVehiculo      NovedadVehiculo[] @relation("NovedadVehiculoAutor")
   publicacionesCreadas   Publicacion[] @relation("PublicacionAutor")
   presenciasDiaEditadas  PresenciaDia[] @relation("PresenciaDiaEditor")
+  webauthnCredentials    WebAuthnCredential[]
+}
+
+/// Credencial WebAuthn (huella / Face ID / passkey) por dispositivo.
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// ID de la credencial (base64url).
+  credentialId String   @unique
+  /// Clave pública (base64url).
+  publicKey    String
+  counter      BigInt   @default(0)
+  deviceType   String?
+  backedUp     Boolean  @default(false)
+  transports   String[] @default([])
+  /// Nombre visible (ej. "Celular").
+  label        String?
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
 }
 
 model Transporte {

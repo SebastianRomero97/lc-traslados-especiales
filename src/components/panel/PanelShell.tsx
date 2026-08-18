@@ -10,6 +10,7 @@ import {
 } from '@/lib/roles';
 import { LogoutButton } from '@/components/panel/LogoutButton';
 import { PanelSwitcher } from '@/components/panel/PanelSwitcher';
+import { WebAuthnSettings } from '@/components/panel/WebAuthnSettings';
 
 export async function requireRole(allowed: Role | Role[]): Promise<SessionUser> {
   const session = await getSession();
@@ -54,7 +55,10 @@ export function PanelShell({
           </div>
         </div>
       </header>
-      <main className="panel-main">{children}</main>
+      <main className="panel-main">
+        <WebAuthnSettings />
+        {children}
+      </main>
     </div>
   );
 }

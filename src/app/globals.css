@@ -4953,11 +4953,67 @@ button, input, select, textarea {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .lc-loader__wheel {
-    animation: none;
-  }
+.auth-bio {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border, #e5e7eb);
 }
+
+.webauthn-settings {
+  margin-bottom: 1rem;
+}
+
+.webauthn-settings__summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  list-style: none;
+}
+
+.webauthn-settings__summary::-webkit-details-marker {
+  display: none;
+}
+
+.webauthn-settings__summary span {
+  font-size: 0.85rem;
+  color: var(--color-muted, #6b7280);
+  font-weight: 500;
+}
+
+.webauthn-settings[open] .webauthn-settings__summary {
+  margin-bottom: 0.75rem;
+}
+
+.webauthn-settings__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.webauthn-settings__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.webauthn-settings__list small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--color-muted, #6b7280);
+}
+
 
 /* —— Presencia del día (Administración) —— */
 .presencia-dia__resumen {
