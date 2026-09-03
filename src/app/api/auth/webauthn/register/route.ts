@@ -16,14 +16,14 @@ import {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 
 /** Opciones para registrar huella/Face ID (usuario ya logueado). */
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ message: 'No autenticado.' }, { status: 401 });
   }
 
   try {
-    const { rpID, rpName } = getWebAuthnConfig();
+    const { rpID, rpName, origin } = getWebAuthnConfig(request);
     const existing = await prisma.webAuthnCredential.findMany({
       where: { userId: session.id },
       select: { credentialId: true, transports: true },
@@ -44,7 +44,7 @@ export async function GET() {
       })),
       authenticatorSelection: {
         residentKey: 'preferred',
-        userVerification: 'required',
+        userVerification: 'preferred',
         authenticatorAttachment: 'platform',
       },
     });
@@ -53,6 +53,8 @@ export async function GET() {
       challenge: options.challenge,
       type: 'register',
       userId: session.id,
+      rpID,
+      origin,
     });
 
     return NextResponse.json({ data: options });
@@ -94,7 +96,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const { rpID, origin } = getWebAuthnConfig();
+    const cfg = getWebAuthnConfig(request);
+    const rpID = expected.rpID || cfg.rpID;
+    const origin = expected.origin || cfg.origin;
     const verification = await verifyRegistrationResponse({
       response: body.response,
       expectedChallenge: expected.challenge,

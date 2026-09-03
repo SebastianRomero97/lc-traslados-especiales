@@ -598,50 +598,7 @@ export function OperativoPanel({
                 )}
               </section>
 
-              {/* Celadora: informe tras Enviar */}
-              {rol === 'CELADORA' && finAt && (
-                <section className="panel-card panel-card--informe-destacado">
-                  <h2>Informe de observaciones</h2>
-                  {jornadaCerrada ? (
-                    <div className="operativo-jornada-ok" role="status">
-                      <p className="operativo-jornada-ok__title">
-                        Jornada Completada Exitosamente
-                      </p>
-                      <p>Gracias por tu compromiso con LC</p>
-                      <p className="panel-card__desc" style={{ marginBottom: 0, marginTop: '0.75rem' }}>
-                        Esta grilla quedó cerrada: ya no se pueden modificar asistencias ni el
-                        informe.
-                      </p>
-                      {informe.trim() && (
-                        <blockquote className="operativo-informe-readonly">{informe}</blockquote>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <p className="panel-card__desc">
-                        La lista ya no se puede editar. Al guardar el informe se cierra tu jornada
-                        (punto de no retorno). Visible para Admin y Administración.
-                      </p>
-                      <textarea
-                        className="operativo-informe"
-                        rows={4}
-                        value={informe}
-                        onChange={(e) => setInforme(e.target.value)}
-                        placeholder="Observaciones del recorrido..."
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--primary"
-                        disabled={busy || !informe.trim()}
-                        onClick={() => void saveInforme()}
-                      >
-                        Guardar informe y cerrar jornada
-                      </button>
-                    </>
-                  )}
-                </section>
-              )}
-
+              {/* Celadora: Ruta primero; informe abajo */}
               {rol === 'CELADORA' ? (
                 <section className="panel-card">
                   <h2>Ruta</h2>
@@ -852,7 +809,52 @@ export function OperativoPanel({
                     </div>
                   )}
                 </section>
-              ) : (
+              ) : null}
+
+              {rol === 'CELADORA' && finAt && (
+                <section className="panel-card panel-card--informe-destacado">
+                  <h2>Informe de observaciones</h2>
+                  {jornadaCerrada ? (
+                    <div className="operativo-jornada-ok" role="status">
+                      <p className="operativo-jornada-ok__title">
+                        Jornada Completada Exitosamente
+                      </p>
+                      <p>Gracias por tu compromiso con LC</p>
+                      <p className="panel-card__desc" style={{ marginBottom: 0, marginTop: '0.75rem' }}>
+                        Esta grilla quedó cerrada: ya no se pueden modificar asistencias ni el
+                        informe.
+                      </p>
+                      {informe.trim() && (
+                        <blockquote className="operativo-informe-readonly">{informe}</blockquote>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="panel-card__desc">
+                        La lista ya no se puede editar. Al guardar el informe se cierra tu jornada
+                        (punto de no retorno). Visible para Admin y Administración.
+                      </p>
+                      <textarea
+                        className="operativo-informe"
+                        rows={4}
+                        value={informe}
+                        onChange={(e) => setInforme(e.target.value)}
+                        placeholder="Observaciones del recorrido..."
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--primary"
+                        disabled={busy || !informe.trim()}
+                        onClick={() => void saveInforme()}
+                      >
+                        Guardar informe y cerrar jornada
+                      </button>
+                    </>
+                  )}
+                </section>
+              )}
+
+              {rol === 'CELADORA' ? null : (
                 <>
                   <section className="panel-card">
                     <h2>Itinerario</h2>

@@ -31,7 +31,6 @@ import {
   type MapaParada,
 } from '@/lib/osm-maps';
 import {
-  labelEstadoPresencia,
   mensajeAvisoPresenciaSalida,
   type EstadoPresencia,
 } from '@/lib/presencia-dia.utils';
@@ -352,6 +351,83 @@ export function GrillaTablero({
       { estado: EstadoPresencia; enGrilla: boolean; pasajeroNombre: string }
     >
   >({});
+  const enGrillaSourceKeyRef = useRef(
+    initial?.id
+      ? `grilla:${initial.id}`
+      : `draft:${typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `d-${Date.now()}`}`,
+  );
+  const initialPasajeroIdsRef = useRef(
+    new Set(
+      (initial?.filas ?? [])
+        .map((f) => f.pasajeroId?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const notifyPresenciaUpdated = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('lc-presencia-updated'));
+    }
+  };
+
+  const syncEnGrillaReserva = (
+    pasajeroId: string,
+    pasajeroNombre: string,
+    enGrilla: boolean,
+  ) => {
+    if (!fecha || !isSalidaItinerario(tipoItinerario)) return;
+    const id = pasajeroId.trim();
+    if (!id) return;
+    setPresenciaByPasajeroId((prev) => {
+      const cur = prev[id];
+      return {
+        ...prev,
+        [id]: {
+          estado: cur?.estado ?? 'PRESENTE',
+          enGrilla,
+          pasajeroNombre: cur?.pasajeroNombre ?? pasajeroNombre,
+        },
+      };
+    });
+    void fetch('/api/administracion/presencia-dia/en-grilla', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fecha,
+        pasajeroId: id,
+        pasajeroNombre,
+        sourceKey: enGrillaSourceKeyRef.current,
+        enGrilla,
+      }),
+    })
+      .then((res) => {
+        if (res.ok) notifyPresenciaUpdated();
+      })
+      .catch(() => {
+        /* silencioso */
+      });
+  };
+
+  const clearEnGrillaReservasDeEsteTablero = () => {
+    if (!fecha) return;
+    const sourceKey = enGrillaSourceKeyRef.current;
+    void fetch(
+      `/api/administracion/presencia-dia/en-grilla?sourceKey=${encodeURIComponent(sourceKey)}&fecha=${encodeURIComponent(fecha)}`,
+      { method: 'DELETE' },
+    )
+      .then((res) => {
+        if (res.ok) notifyPresenciaUpdated();
+      })
+      .catch(() => {
+        /* silencioso */
+      });
+  };
+
+  const handleCancelTablero = () => {
+    clearEnGrillaReservasDeEsteTablero();
+    onCancel();
+  };
+
   /** Reorden de filas con pointer (no HTML5): así Chrome permite la rueda. */
   const [reorderDragId, setReorderDragId] = useState<string | null>(null);
   const paradasListRef = useRef<HTMLDivElement>(null);
@@ -491,7 +567,7 @@ export function GrillaTablero({
   }, [areaId, zonaMode]);
 
   useEffect(() => {
-    if (!fecha || !isSalidaItinerario(tipoItinerario)) {
+    if (!fecha) {
       setPresenciaByPasajeroId({});
       return;
     }
@@ -533,7 +609,6 @@ export function GrillaTablero({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, tipoItinerario]);
 
   useEffect(() => {
@@ -577,14 +652,14 @@ export function GrillaTablero({
     () => opts.transportes.find((t) => t.id === transporteId) ?? null,
     [opts.transportes, transporteId],
   );
-  /** Vehículos de destino de trasbordo: siempre todas las zonas. */
+  /** Vehículos de destino de trasbordo: siempre todas las zonas, incluido el de esta grilla. */
   const transportesParaTrasbordo = useMemo(() => {
     const list =
       opts.transportesTrasbordo && opts.transportesTrasbordo.length > 0
         ? opts.transportesTrasbordo
         : opts.transportes;
-    return list.filter((t) => t.id !== transporteId);
-  }, [opts.transportesTrasbordo, opts.transportes, transporteId]);
+    return list;
+  }, [opts.transportesTrasbordo, opts.transportes]);
   const chofer = useMemo(
     () =>
       opts.choferes.find((c) => c.id === choferId) ??
@@ -811,6 +886,9 @@ export function GrillaTablero({
         usarCoordsParaChofer: Boolean(p.usarCoordsParaChofer),
       },
     ]);
+    if (isSalidaItinerario(tipoItinerario)) {
+      syncEnGrillaReserva(p.id, p.nombre, true);
+    }
   };
 
   const addDestinoFila = (destinoId: string) => {
@@ -1559,13 +1637,22 @@ export function GrillaTablero({
     if (section === 'pasajeros') {
       return opts.pasajeros.filter((p) => matchRecursoName(p.nombre)).map((p) => {
         const used = usedPasajeroIds.has(p.id);
+        const pr = presenciaByPasajeroId[p.id];
+        const presenciaClass =
+          !used && pr
+            ? pr.estado === 'PRESENTE'
+              ? ' is-presencia-presente'
+              : pr.estado === 'RETIRADO'
+                ? ' is-presencia-retirado'
+                : ' is-presencia-ausente'
+            : '';
         return (
           <div
             key={p.id}
             role="button"
             tabIndex={used ? -1 : 0}
             aria-disabled={used}
-            className={`grilla-recurso-card${used ? ' is-pasajero-usado' : ''}${
+            className={`grilla-recurso-card${used ? ' is-pasajero-usado' : ''}${presenciaClass}${
               p.esZonaActual === false ? ' is-otra-zona' : ''
             }`}
             title={used ? 'Pasajero ya en la grilla' : 'Click o arrastrá para agregar'}
@@ -1584,31 +1671,6 @@ export function GrillaTablero({
             <strong>{p.nombre}</strong>
             <small>{p.direccion}</small>
             {recursoZonaBadge(p.zonaNombre, p.esZonaActual)}
-            {isSalidaItinerario(tipoItinerario) &&
-              presenciaByPasajeroId[p.id] &&
-              (() => {
-                const pr = presenciaByPasajeroId[p.id]!;
-                if (pr.enGrilla) {
-                  return (
-                    <span className="presencia-chip presencia-chip--engrilla">En grilla</span>
-                  );
-                }
-                if (pr.estado === 'AUSENTE') {
-                  return (
-                    <span className="presencia-chip presencia-chip--ausente">Ausente</span>
-                  );
-                }
-                if (pr.estado === 'RETIRADO') {
-                  return (
-                    <span className="presencia-chip presencia-chip--retirado">Retirado</span>
-                  );
-                }
-                return (
-                  <span className="presencia-chip presencia-chip--presente">
-                    {labelEstadoPresencia(pr.estado)}
-                  </span>
-                );
-              })()}
           </div>
         );
       });
@@ -1659,7 +1721,11 @@ export function GrillaTablero({
           </p>
         </div>
         <div className="grilla-tablero__header-actions">
-          <button type="button" className="btn btn--outline btn--sm" onClick={onCancel}>
+          <button
+            type="button"
+            className="btn btn--outline btn--sm"
+            onClick={handleCancelTablero}
+          >
             Volver al listado
           </button>
           <button
@@ -2517,9 +2583,18 @@ export function GrillaTablero({
                   <button
                     type="button"
                     className="btn btn--danger btn--sm grilla-fila__quitar"
-                    onClick={() =>
-                      setFilas((prev) => prev.filter((f) => f.clientId !== fila.clientId))
-                    }
+                    onClick={() => {
+                      const removedId = fila.pasajeroId?.trim() || '';
+                      const removedNombre = fila.pasajeroNombre || '';
+                      setFilas((prev) => prev.filter((f) => f.clientId !== fila.clientId));
+                      if (
+                        removedId &&
+                        isSalidaItinerario(tipoItinerario) &&
+                        !initialPasajeroIdsRef.current.has(removedId)
+                      ) {
+                        syncEnGrillaReserva(removedId, removedNombre, false);
+                      }
+                    }}
                   >
                     Quitar
                   </button>

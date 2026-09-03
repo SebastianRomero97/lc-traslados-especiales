@@ -50,6 +50,21 @@ export function AdministracionPresenciaDiaPanel() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const onUpdate = () => {
+      void load();
+    };
+    window.addEventListener('lc-presencia-updated', onUpdate);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('lc-presencia-updated', onUpdate);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [load]);
+
   const setEstado = async (item: PresenciaDiaItem, estado: EstadoPresencia) => {
     if (item.enGrilla) {
       popup.error(
@@ -90,8 +105,9 @@ export function AdministracionPresenciaDiaPanel() {
       <section className="panel-card">
         <h2>Presencia del día</h2>
         <p className="panel-card__desc">
-          Lista unificada de ingresos de hoy ({formatFechaGrilla(fecha)}). El estado es independiente
-          de la asistencia de la celadora. Al cambiar el día, esta vista se vacía sola.
+          Lista unificada de ingresos de hoy ({formatFechaGrilla(fecha)}), según la asistencia de
+          celadora. Al armar una salida, el pasajero pasa a “En grilla”. Al cambiar el día, esta vista
+          se vacía sola.
         </p>
         {data && (
           <p className="presencia-dia__resumen">
@@ -121,8 +137,8 @@ export function AdministracionPresenciaDiaPanel() {
           <p className="panel-card__desc">Cargando…</p>
         ) : !data || data.items.length === 0 ? (
           <p className="panel-card__desc">
-            Todavía no hay pasajeros de ingresos para hoy. Cuando las celadoras carguen asistencia o
-            haya grillas de ingreso, van a aparecer acá.
+            Todavía no hay pasajeros para hoy. Cuando las celadoras envíen la asistencia de ingresos,
+            van a aparecer acá.
           </p>
         ) : (
           <ul className="presencia-dia__lista">

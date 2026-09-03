@@ -1,6 +1,6 @@
 'use client';
 
-import { DragEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readApiError } from '@/lib/api-errors';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import { DESTINO_COLOR_PALETTE } from '@/lib/destino-color';
@@ -131,6 +131,7 @@ export function AdministracionDashboard() {
     destinos: false,
   });
   const [poolSearch, setPoolSearch] = useState<Partial<Record<AccordionKey, string>>>({});
+  const suppressPoolClickRef = useRef(false);
 
   const matchPoolName = (nombre: string, key: AccordionKey) => {
     const q = (poolSearch[key] ?? '').trim().toLowerCase();
@@ -218,41 +219,46 @@ export function AdministracionDashboard() {
     e.preventDefault();
     setDropHover(false);
     const payload = readDrag(e);
-    if (!payload || !selectedAreaId || busy) return;
+    if (!payload) return;
+    await assignPayload(payload.kind, payload.id);
+  };
 
-    if (payload.kind === 'celadora') {
-      if (detail?.celadoras.some((c) => c.user.id === payload.id)) {
+  const assignPayload = async (kind: RecursoKind, id: string) => {
+    if (!selectedAreaId || busy) return;
+
+    if (kind === 'celadora') {
+      if (detail?.celadoras.some((c) => c.user.id === id)) {
         popup.warning('Esa celadora ya está en la zona.');
         return;
       }
-      await assign({ action: 'add_celadora', userId: payload.id });
+      await assign({ action: 'add_celadora', userId: id });
       return;
     }
 
-    if (payload.kind === 'chofer' || payload.kind === 'prestador') {
-      if (detail?.choferes?.some((c) => c.user.id === payload.id)) {
+    if (kind === 'chofer' || kind === 'prestador') {
+      if (detail?.choferes?.some((c) => c.user.id === id)) {
         popup.warning('Ese chofer ya está en la zona.');
         return;
       }
-      await assign({ action: 'add_chofer', userId: payload.id });
+      await assign({ action: 'add_chofer', userId: id });
       return;
     }
 
-    if (payload.kind === 'vehiculo') {
-      if (detail?.transportes.some((t) => t.transporte.id === payload.id)) {
+    if (kind === 'vehiculo') {
+      if (detail?.transportes.some((t) => t.transporte.id === id)) {
         popup.warning('Ese vehículo ya está en la zona.');
         return;
       }
-      await assign({ action: 'add_transporte', transporteId: payload.id });
+      await assign({ action: 'add_transporte', transporteId: id });
       return;
     }
 
-    if (payload.kind === 'pasajero') {
-      if (detail?.pasajeros.some((p) => p.pasajero.id === payload.id)) {
+    if (kind === 'pasajero') {
+      if (detail?.pasajeros.some((p) => p.pasajero.id === id)) {
         popup.warning('Ese pasajero ya está en la zona.');
         return;
       }
-      const pasajero = pool?.pasajeros.find((p) => p.id === payload.id);
+      const pasajero = pool?.pasajeros.find((p) => p.id === id);
       const otras = pasajero?.areas.filter((a) => a.id !== selectedAreaId) ?? [];
       if (otras.length > 0) {
         const ok = await popup.confirm({
@@ -263,12 +269,12 @@ export function AdministracionDashboard() {
         });
         if (!ok) return;
       }
-      await assign({ action: 'add_pasajero', pasajeroId: payload.id });
+      await assign({ action: 'add_pasajero', pasajeroId: id });
       return;
     }
 
-    if (payload.kind === 'destino') {
-      const destino = pool?.destinos.find((d) => d.id === payload.id);
+    if (kind === 'destino') {
+      const destino = pool?.destinos.find((d) => d.id === id);
       if (!destino) return;
       if (destino.areaId === selectedAreaId) {
         popup.warning('Ese destino ya pertenece a esta zona.');
@@ -281,7 +287,7 @@ export function AdministracionDashboard() {
         cancelLabel: 'Cancelar',
       });
       if (!ok) return;
-      await assign({ action: 'set_destino_area', destinoId: payload.id });
+      await assign({ action: 'set_destino_area', destinoId: id });
     }
   };
 
@@ -327,6 +333,15 @@ export function AdministracionDashboard() {
     );
   }
 
+  const onPoolCardClick = (kind: RecursoKind, id: string, usedInCurrent: boolean) => {
+    if (busy || usedInCurrent) return;
+    if (suppressPoolClickRef.current) {
+      suppressPoolClickRef.current = false;
+      return;
+    }
+    void assignPayload(kind, id);
+  };
+
   const renderPoolCard = (
     key: string,
     title: string,
@@ -339,11 +354,32 @@ export function AdministracionDashboard() {
   ) => (
     <div
       key={key}
+      role="button"
+      tabIndex={busy || usedInCurrent ? -1 : 0}
+      aria-disabled={busy || usedInCurrent}
       className={`adm-pool-card${usedInCurrent ? ' is-in-area' : ''}${
         usedStyle === 'used' ? ' is-used' : ''
       }`}
+      title={
+        usedInCurrent
+          ? 'Ya está en esta zona'
+          : 'Click o arrastrá a la zona activa'
+      }
       draggable={!busy}
-      onDragStart={(e) => setDrag(e, kind, id)}
+      onDragStart={(e) => {
+        suppressPoolClickRef.current = false;
+        setDrag(e, kind, id);
+      }}
+      onDragEnd={() => {
+        suppressPoolClickRef.current = true;
+      }}
+      onClick={() => onPoolCardClick(kind, id, usedInCurrent)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onPoolCardClick(kind, id, usedInCurrent);
+        }
+      }}
     >
       <strong>{title}</strong>
       {subtitle && <small>{subtitle}</small>}
@@ -364,7 +400,8 @@ export function AdministracionDashboard() {
         <aside className="adm-board__pool panel-card">
           <h2>Recursos</h2>
           <p className="panel-card__desc">
-            Arrastrá a la zona activa. Celadoras, choferes y vehículos pueden estar en varias zonas.
+            Click o arrastrá a la zona activa. Celadoras, choferes y vehículos pueden estar en varias
+            zonas.
           </p>
 
           {(

@@ -18,8 +18,10 @@ function pasajeroKey(pasajeroId: string | null | undefined, nombre: string): str
 }
 
 /**
- * Lista unificada de presencia del día (ingresos → default; override; en grilla salida).
- * Solo servidor (usa Prisma).
+ * Lista unificada de presencia del día.
+ * - Solo pasajeros con asistencia de celadora en grillas de ingreso (no destinos).
+ * - Las asistencias / filas de salida no crean filas nuevas.
+ * - "En grilla" = ese pasajero ya está en alguna salida del día.
  */
 export async function buildPresenciaDia(fechaInput?: string): Promise<{
   fecha: string;
@@ -41,8 +43,6 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
         select: {
           pasajeroId: true,
           pasajeroNombre: true,
-          destinoId: true,
-          accion: true,
         },
       },
       asistencias: {
@@ -59,60 +59,52 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
   const salidas = grillas.filter((g) => isSalidaItinerario(g.tipoItinerario));
 
   type Acc = {
-    pasajeroId: string | null;
+    pasajeroId: string;
     pasajeroNombre: string;
     viajo: boolean;
-    tieneAsistencia: boolean;
     zonas: Set<string>;
   };
 
   const byKey = new Map<string, Acc>();
 
+  // Solo asistencia de ingresos (ciclo: celadora envía → presencia → armar salidas).
   for (const g of ingresos) {
-    for (const f of g.filas) {
-      const nombre = f.pasajeroNombre.trim();
-      if (!nombre) continue;
-      const esDestino = Boolean(f.destinoId) && !f.pasajeroId;
-      if (esDestino) continue;
-      if (!f.pasajeroId && f.accion === 'TRASBORDO') continue;
-
-      const key = pasajeroKey(f.pasajeroId, nombre);
-      let row = byKey.get(key);
-      if (!row) {
-        row = {
-          pasajeroId: f.pasajeroId ?? null,
-          pasajeroNombre: nombre,
-          viajo: false,
-          tieneAsistencia: false,
-          zonas: new Set(),
-        };
-        byKey.set(key, row);
-      } else if (f.pasajeroId && !row.pasajeroId) {
-        row.pasajeroId = f.pasajeroId;
-      }
-      row.zonas.add(g.area.nombre);
-    }
-
     for (const a of g.asistencias) {
-      const nombre = a.pasajeroNombre.trim();
-      if (!nombre) continue;
-      const key = pasajeroKey(a.pasajeroId, nombre);
+      const pasajeroId = a.pasajeroId?.trim();
+      // Sin pasajeroId suele ser destino institucional (Completado/Observación).
+      if (!pasajeroId) continue;
+      const nombre = a.pasajeroNombre.trim() || 'Pasajero';
+      const key = pasajeroKey(pasajeroId, nombre);
       let row = byKey.get(key);
       if (!row) {
         row = {
-          pasajeroId: a.pasajeroId ?? null,
+          pasajeroId,
           pasajeroNombre: nombre,
           viajo: a.estado === 'ASISTIO',
-          tieneAsistencia: true,
           zonas: new Set([g.area.nombre]),
         };
         byKey.set(key, row);
       } else {
-        if (a.pasajeroId && !row.pasajeroId) row.pasajeroId = a.pasajeroId;
-        row.tieneAsistencia = true;
         if (a.estado === 'ASISTIO') row.viajo = true;
         row.zonas.add(g.area.nombre);
+        if (nombre && row.pasajeroNombre === 'Pasajero') {
+          row.pasajeroNombre = nombre;
+        }
       }
+    }
+  }
+
+  const keysByPasajeroId = new Map<string, string[]>();
+  const keysByNombre = new Map<string, string[]>();
+  for (const [key, row] of byKey) {
+    const idList = keysByPasajeroId.get(row.pasajeroId) ?? [];
+    idList.push(key);
+    keysByPasajeroId.set(row.pasajeroId, idList);
+    const nk = row.pasajeroNombre.trim().toLowerCase();
+    if (nk) {
+      const nList = keysByNombre.get(nk) ?? [];
+      nList.push(key);
+      keysByNombre.set(nk, nList);
     }
   }
 
@@ -120,32 +112,72 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
     string,
     { id: string; nombre: string; transporte: string }[]
   >();
+
+  const markEnGrilla = (
+    key: string,
+    g: { id: string; nombre: string; transporte: { nombre: string } },
+  ) => {
+    if (!byKey.has(key)) return;
+    const list = enGrillaByKey.get(key) ?? [];
+    if (!list.some((x) => x.id === g.id)) {
+      list.push({
+        id: g.id,
+        nombre: g.nombre,
+        transporte: g.transporte.nombre,
+      });
+    }
+    enGrillaByKey.set(key, list);
+  };
+
   for (const g of salidas) {
     for (const f of g.filas) {
-      if (!f.pasajeroId && !f.pasajeroNombre.trim()) continue;
-      if (f.destinoId && !f.pasajeroId) continue;
+      const pasajeroId = f.pasajeroId?.trim();
       const nombre = f.pasajeroNombre.trim();
-      if (!nombre) continue;
-      const key = pasajeroKey(f.pasajeroId, nombre);
-      const list = enGrillaByKey.get(key) ?? [];
-      if (!list.some((x) => x.id === g.id)) {
-        list.push({
-          id: g.id,
-          nombre: g.nombre,
-          transporte: g.transporte.nombre,
-        });
+      if (!pasajeroId && !nombre) continue;
+
+      if (pasajeroId) {
+        for (const key of keysByPasajeroId.get(pasajeroId) ?? []) {
+          markEnGrilla(key, g);
+        }
       }
-      enGrillaByKey.set(key, list);
-      if (!byKey.has(key)) {
-        byKey.set(key, {
-          pasajeroId: f.pasajeroId ?? null,
-          pasajeroNombre: nombre,
-          viajo: false,
-          tieneAsistencia: false,
-          zonas: new Set([g.area.nombre]),
-        });
+      if (nombre) {
+        for (const key of keysByNombre.get(nombre.toLowerCase()) ?? []) {
+          markEnGrilla(key, g);
+        }
+      }
+      // Fallback por key canónica (por si el índice no alcanzó).
+      if (pasajeroId) {
+        markEnGrilla(pasajeroKey(pasajeroId, nombre || 'Pasajero'), g);
       }
     }
+  }
+
+  const reservas = await prisma.presenciaEnGrillaReserva.findMany({
+    where: { fecha },
+    select: {
+      pasajeroId: true,
+      pasajeroNombre: true,
+      sourceKey: true,
+    },
+  });
+
+  for (const r of reservas) {
+    const pasajeroId = r.pasajeroId.trim();
+    const nombre = r.pasajeroNombre.trim();
+    const fakeG = {
+      id: `reserva:${r.sourceKey}`,
+      nombre: 'En armado',
+      transporte: { nombre: 'En armado' },
+    };
+    for (const key of keysByPasajeroId.get(pasajeroId) ?? []) {
+      markEnGrilla(key, fakeG);
+    }
+    if (nombre) {
+      for (const key of keysByNombre.get(nombre.toLowerCase()) ?? []) {
+        markEnGrilla(key, fakeG);
+      }
+    }
+    markEnGrilla(pasajeroKey(pasajeroId, nombre || 'Pasajero'), fakeG);
   }
 
   const overrides = await prisma.presenciaDia.findMany({
@@ -153,7 +185,15 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
   });
   const overrideByKey = new Map<string, (typeof overrides)[number]>();
   for (const o of overrides) {
-    overrideByKey.set(pasajeroKey(o.pasajeroId, o.pasajeroNombre), o);
+    const pid = o.pasajeroId?.trim();
+    if (pid) {
+      overrideByKey.set(pasajeroKey(pid, o.pasajeroNombre), o);
+      for (const k of keysByPasajeroId.get(pid) ?? []) {
+        overrideByKey.set(k, o);
+      }
+    } else {
+      overrideByKey.set(pasajeroKey(null, o.pasajeroNombre), o);
+    }
   }
 
   const items: PresenciaDiaItem[] = [...byKey.entries()]
@@ -169,7 +209,7 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
         estado,
         estadoDefault,
         tieneOverride: Boolean(ov),
-        viajoConLc: row.tieneAsistencia ? row.viajo : null,
+        viajoConLc: row.viajo,
         enGrilla: grillasSalida.length > 0,
         grillasSalida,
         zonas: [...row.zonas].sort((a, b) => a.localeCompare(b, 'es')),
@@ -179,7 +219,10 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
 
   const resumen = { presente: 0, ausente: 0, retirado: 0, enGrilla: 0 };
   for (const i of items) {
-    if (i.enGrilla) resumen.enGrilla += 1;
+    if (i.enGrilla) {
+      resumen.enGrilla += 1;
+      continue;
+    }
     if (i.estado === 'PRESENTE') resumen.presente += 1;
     else if (i.estado === 'RETIRADO') resumen.retirado += 1;
     else resumen.ausente += 1;
@@ -188,7 +231,7 @@ export async function buildPresenciaDia(fechaInput?: string): Promise<{
   return { fecha: fechaStr, items, resumen };
 }
 
-/** Mapa rápido pasajeroId → info para avisos en armado de salida. */
+/** Mapa rápido pasajeroId → info para avisos / colores en armado. */
 export async function presenciaMapForFecha(fechaInput: string): Promise<
   Record<
     string,

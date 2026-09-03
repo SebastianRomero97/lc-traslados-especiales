@@ -8,14 +8,74 @@ import type {
 
 const CHALLENGE_COOKIE = 'lc_webauthn_challenge';
 
-export function getWebAuthnConfig() {
-  const rpID =
-    process.env.WEBAUTHN_RP_ID?.trim() ||
-    (process.env.NODE_ENV === 'production' ? undefined : 'localhost');
-  const origin =
-    process.env.WEBAUTHN_ORIGIN?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    (process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:3000');
+/**
+ * RP ID / origin para WebAuthn.
+ * - Preferí Origin del browser (coincide con la barra de direcciones).
+ * - Env WEBAUTHN_* / NEXT_PUBLIC_APP_URL para producción.
+ * - Fallback local: localhost.
+ */
+export function getWebAuthnConfig(request?: Request) {
+  const envRpID = process.env.WEBAUTHN_RP_ID?.trim();
+  const envOrigin =
+    process.env.WEBAUTHN_ORIGIN?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  let rpID: string | undefined;
+  let origin: string | undefined;
+
+  // En desarrollo, el Origin del browser manda (localhost vs IP de red).
+  // En producción, las env tienen prioridad.
+  const preferRequest = process.env.NODE_ENV !== 'production';
+
+  if (request) {
+    const headerOrigin = request.headers.get('origin')?.trim();
+    if (headerOrigin) {
+      try {
+        const o = new URL(headerOrigin);
+        origin = o.origin;
+        rpID = o.hostname;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!rpID || !origin) {
+      try {
+        const url = new URL(request.url);
+        const hostHeader =
+          request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
+          request.headers.get('host')?.trim() ||
+          url.host;
+        const hostname = hostHeader.replace(/:\d+$/, '');
+        const proto =
+          request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+          url.protocol.replace(':', '') ||
+          'http';
+        if (!rpID && hostname) rpID = hostname;
+        if (!origin && hostname) {
+          origin = hostHeader.includes(':')
+            ? `${proto}://${hostHeader}`
+            : `${proto}://${hostname}`;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  if (!preferRequest) {
+    if (envRpID) rpID = envRpID;
+    if (envOrigin) origin = envOrigin;
+  } else {
+    if (!rpID && envRpID) rpID = envRpID;
+    if (!origin && envOrigin) origin = envOrigin;
+  }
+
+  if (!rpID) {
+    rpID = process.env.NODE_ENV === 'production' ? undefined : 'localhost';
+  }
+  if (!origin) {
+    origin =
+      process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:3000';
+  }
 
   if (!rpID || !origin) {
     throw new Error(
@@ -40,6 +100,9 @@ type ChallengePayload = {
   challenge: string;
   type: 'register' | 'login';
   userId?: string;
+  /** Host con el que se generó el challenge (para verificar origin/rpID). */
+  rpID?: string;
+  origin?: string;
 };
 
 export async function setWebAuthnChallengeCookie(payload: ChallengePayload) {
@@ -73,6 +136,8 @@ export async function consumeWebAuthnChallengeCookie(): Promise<ChallengePayload
       challenge: payload.challenge,
       type: payload.type,
       userId: typeof payload.userId === 'string' ? payload.userId : undefined,
+      rpID: typeof payload.rpID === 'string' ? payload.rpID : undefined,
+      origin: typeof payload.origin === 'string' ? payload.origin : undefined,
     };
   } catch {
     return null;

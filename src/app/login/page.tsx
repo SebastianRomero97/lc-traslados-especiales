@@ -114,6 +114,10 @@ export default function LoginPage() {
       const name = err instanceof Error ? err.name : '';
       if (name === 'NotAllowedError') {
         setError('Inicio con huella cancelado.');
+      } else if (name === 'SecurityError' || name === 'NotSupportedError') {
+        setError(
+          'Este navegador o dirección no permiten biometría. Entrá con http://localhost:3000 (no por IP de red), o registrá de nuevo la huella desde el panel en esa misma dirección.',
+        );
       } else {
         setError(
           err instanceof Error

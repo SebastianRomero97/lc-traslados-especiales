@@ -39,12 +39,11 @@ export async function POST(request: Request) {
       response?: AuthenticationResponseJSON;
     };
 
-    // Si viene `response`, es la verificación del login.
     if (body.response) {
-      return verifyLogin(body.response);
+      return verifyLogin(body.response, request);
     }
 
-    const { rpID } = getWebAuthnConfig();
+    const { rpID, origin } = getWebAuthnConfig(request);
     const username = body.username?.trim();
 
     let allowCredentials:
@@ -79,13 +78,15 @@ export async function POST(request: Request) {
 
     const options = await generateAuthenticationOptions({
       rpID,
-      userVerification: 'required',
+      userVerification: 'preferred',
       allowCredentials,
     });
 
     await setWebAuthnChallengeCookie({
       challenge: options.challenge,
       type: 'login',
+      rpID,
+      origin,
     });
 
     return NextResponse.json({ data: options });
@@ -103,7 +104,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function verifyLogin(response: AuthenticationResponseJSON) {
+async function verifyLogin(response: AuthenticationResponseJSON, request: Request) {
   const expected = await consumeWebAuthnChallengeCookie();
   if (!expected || expected.type !== 'login') {
     return NextResponse.json(
@@ -135,7 +136,9 @@ async function verifyLogin(response: AuthenticationResponseJSON) {
     );
   }
 
-  const { rpID, origin } = getWebAuthnConfig();
+  const cfg = getWebAuthnConfig(request);
+  const rpID = expected.rpID || cfg.rpID;
+  const origin = expected.origin || cfg.origin;
   const verification = await verifyAuthenticationResponse({
     response,
     expectedChallenge: expected.challenge,

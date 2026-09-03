@@ -1917,8 +1917,9 @@ button, input, select, textarea {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: #fff;
-  cursor: grab;
+  cursor: pointer;
   font-size: 0.9rem;
+  user-select: none;
 }
 
 .adm-pool-card small {
@@ -3937,6 +3938,31 @@ button, input, select, textarea {
   background: rgba(0, 45, 114, 0.08);
   box-shadow: inset 0 0 0 1px var(--color-navy, #002d72);
   cursor: default;
+}
+
+.grilla-recurso-card.is-presencia-presente {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.grilla-recurso-card.is-presencia-ausente {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.grilla-recurso-card.is-presencia-ausente strong {
+  color: #4b5563;
+}
+
+.grilla-recurso-card.is-presencia-retirado {
+  border-color: #ea580c;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.grilla-recurso-card.is-presencia-retirado strong {
+  color: #9a3412;
 }
 
 .grilla-recurso-card.is-pasajero-usado {

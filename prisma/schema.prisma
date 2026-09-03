@@ -191,6 +191,7 @@ model Pasajero {
   filas     GrillaFila[]
   asistencias Asistencia[]
   presenciasDia PresenciaDia[]
+  presenciaEnGrillaReservas PresenciaEnGrillaReserva[]
 }
 
 /// Teléfono / contacto de un pasajero (varios por ficha).
@@ -495,6 +496,25 @@ model PresenciaDia {
 }
 
 /// Aviso del Admin hacia roles operativos (con vigencia)
+
+/// Reserva temporal de "en grilla" al armar una salida (antes o sin guardar).
+/// Se limpia al cancelar el editor o al filtrar por fecha del dia.
+model PresenciaEnGrillaReserva {
+  id             String   @id @default(cuid())
+  fecha          DateTime @db.Date
+  pasajeroId     String
+  pasajero       Pasajero @relation(fields: [pasajeroId], references: [id], onDelete: Cascade)
+  pasajeroNombre String
+  /// grilla:<id> o draft:<uuid> del tablero que reservo.
+  sourceKey      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([fecha, pasajeroId])
+  @@index([fecha])
+  @@index([sourceKey])
+}
+
 model Publicacion {
   id          String   @id @default(cuid())
   titulo      String
