@@ -232,6 +232,7 @@ export type GrillaItinerarioPrintInput = {
     accion: string;
     trasbordoHacia?: string | null;
     trasbordoSujeto?: string | null;
+    trasbordoMovimiento?: string | null;
     destinoColor?: string | null;
   }[];
 };
@@ -312,6 +313,7 @@ export function buildGrillaItinerarioBodyHtml(g: GrillaItinerarioPrintInput): st
         pasajeroNombre: f.pasajeroNombre,
         trasbordoHacia: f.trasbordoHacia,
         trasbordoSujeto: f.trasbordoSujeto,
+        trasbordoMovimiento: f.trasbordoMovimiento,
       });
       const color = f.destinoColor?.trim();
       const style =

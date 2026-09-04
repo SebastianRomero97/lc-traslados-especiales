@@ -2,8 +2,14 @@ export type AccionParada = 'SUBE' | 'BAJA' | 'TRASBORDO' | 'SALIDA_BASE' | 'RETO
 
 export type TrasbordoSujeto = 'PASAJERO' | 'CELADORA';
 
+export type TrasbordoMovimiento = 'SUBE' | 'BAJA';
+
 export function isTrasbordoSujeto(value: string): value is TrasbordoSujeto {
   return value === 'PASAJERO' || value === 'CELADORA';
+}
+
+export function isTrasbordoMovimiento(value: string): value is TrasbordoMovimiento {
+  return value === 'SUBE' || value === 'BAJA';
 }
 
 export function isAccionBaseLc(accion: string): boolean {
@@ -143,6 +149,7 @@ export type GrillaFilaInput = {
   accion: AccionParada;
   trasbordoHacia?: string | null;
   trasbordoSujeto?: TrasbordoSujeto | string | null;
+  trasbordoMovimiento?: TrasbordoMovimiento | string | null;
   trasbordoTransporteId?: string | null;
   lat?: number | null;
   lon?: number | null;
@@ -158,6 +165,7 @@ export type GrillaFilaParaForm = {
   accion: AccionParada | string;
   trasbordoHacia?: string | null;
   trasbordoSujeto?: TrasbordoSujeto | string | null;
+  trasbordoMovimiento?: TrasbordoMovimiento | string | null;
   trasbordoTransporteId?: string | null;
   lat?: number | null;
   lon?: number | null;
@@ -207,14 +215,20 @@ export function formatAccionFila(params: {
   pasajeroNombre: string;
   trasbordoHacia?: string | null;
   trasbordoSujeto?: TrasbordoSujeto | string | null;
+  trasbordoMovimiento?: TrasbordoMovimiento | string | null;
 }): string {
   if (params.accion === 'TRASBORDO') {
-    const hacia = params.trasbordoHacia?.trim();
+    const vehiculo = params.trasbordoHacia?.trim();
+    const movimientoRaw = params.trasbordoMovimiento?.toString().trim() || '';
+    const movimiento = isTrasbordoMovimiento(movimientoRaw) ? movimientoRaw.toLowerCase() : '';
     const quien =
       params.trasbordoSujeto === 'CELADORA'
         ? `celadora${params.pasajeroNombre?.trim() ? ` ${params.pasajeroNombre.trim()}` : ''}`
         : params.pasajeroNombre?.trim() || 'pasajero';
-    return hacia ? `trasbordo ${quien} → ${hacia}` : `trasbordo ${quien}`;
+    const verbo = movimiento ? ` ${movimiento}` : '';
+    if (!vehiculo) return `trasbordo${verbo} ${quien}`;
+    const flecha = movimientoRaw === 'SUBE' ? '←' : '→';
+    return `trasbordo${verbo} ${quien} ${flecha} ${vehiculo}`;
   }
   if (isAccionBaseLc(params.accion)) {
     return labelAccionParada(params.accion);
@@ -311,6 +325,7 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
   accion: AccionParada;
   trasbordoHacia: string;
   trasbordoSujeto: TrasbordoSujeto | '';
+  trasbordoMovimiento: TrasbordoMovimiento | '';
   trasbordoTransporteId: string;
   /** Destino vs dirección libre para el punto de trasbordo. */
   trasbordoPuntoMode: 'destino' | 'direccion';
@@ -326,6 +341,12 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
     : accion === 'TRASBORDO'
       ? 'PASAJERO'
       : '';
+  const movRaw = fila.trasbordoMovimiento?.toString().trim() ?? '';
+  const trasbordoMovimiento: TrasbordoMovimiento | '' = isTrasbordoMovimiento(movRaw)
+    ? movRaw
+    : accion === 'TRASBORDO'
+      ? 'BAJA'
+      : '';
   return {
     tipoParada,
     hora: fila.hora ?? '',
@@ -336,6 +357,7 @@ export function mapGrillaFilaToForm(fila: GrillaFilaParaForm): {
     accion,
     trasbordoHacia: fila.trasbordoHacia ?? '',
     trasbordoSujeto,
+    trasbordoMovimiento,
     trasbordoTransporteId: fila.trasbordoTransporteId ?? '',
     trasbordoPuntoMode: fila.destinoId ? 'destino' : 'direccion',
     lat: fila.lat ?? null,
@@ -358,6 +380,7 @@ export function buildGrillaWhatsAppText(params: {
     accion: string;
     trasbordoHacia?: string | null;
     trasbordoSujeto?: TrasbordoSujeto | string | null;
+    trasbordoMovimiento?: TrasbordoMovimiento | string | null;
   }[];
 }): string {
   const responsables = params.conCeladora
@@ -377,6 +400,7 @@ export function buildGrillaWhatsAppText(params: {
           pasajeroNombre: f.pasajeroNombre,
           trasbordoHacia: f.trasbordoHacia,
           trasbordoSujeto: f.trasbordoSujeto,
+          trasbordoMovimiento: f.trasbordoMovimiento,
         })}`,
     ),
   ].filter((line) => line !== null);

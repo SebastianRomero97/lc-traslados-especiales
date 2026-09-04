@@ -401,6 +401,7 @@ export function AdministracionGrillasManager({
         accion?: string;
         trasbordoHacia?: string | null;
         trasbordoSujeto?: string | null;
+        trasbordoMovimiento?: string | null;
         destino?: { color?: string | null } | null;
       }[];
       asistencias?: {
@@ -435,6 +436,7 @@ export function AdministracionGrillasManager({
       accion: f.accion ?? 'SUBE',
       trasbordoHacia: f.trasbordoHacia,
       trasbordoSujeto: f.trasbordoSujeto,
+      trasbordoMovimiento: f.trasbordoMovimiento,
       destinoColor: f.destino?.color ?? null,
     })),
   });
@@ -715,6 +717,7 @@ export function AdministracionGrillasManager({
                           pasajeroNombre: f.pasajeroNombre,
                           trasbordoHacia: f.trasbordoHacia,
                           trasbordoSujeto: f.trasbordoSujeto,
+                          trasbordoMovimiento: f.trasbordoMovimiento,
                         })}
                       </td>
                     </tr>

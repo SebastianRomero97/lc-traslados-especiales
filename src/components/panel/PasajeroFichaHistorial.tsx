@@ -227,6 +227,7 @@ export function PasajeroFichaHistorial({
                           pasajeroNombre: f.pasajeroNombre,
                           trasbordoHacia: f.trasbordoHacia,
                           trasbordoSujeto: f.trasbordoSujeto,
+                          trasbordoMovimiento: f.trasbordoMovimiento,
                         })}
                       </td>
                     </tr>

@@ -74,6 +74,7 @@ type GrillaOperativa = {
     accion: string;
     trasbordoHacia: string | null;
     trasbordoSujeto?: string | null;
+    trasbordoMovimiento?: string | null;
     lat?: number | null;
     lon?: number | null;
     usarCoordsParaChofer?: boolean;
@@ -662,6 +663,7 @@ export function OperativoPanel({
                                     pasajeroNombre: f.pasajeroNombre,
                                     trasbordoHacia: f.trasbordoHacia,
                                     trasbordoSujeto: f.trasbordoSujeto,
+                                    trasbordoMovimiento: f.trasbordoMovimiento,
                                   })}
                                 </span>
                                 {actual && (
@@ -888,6 +890,7 @@ export function OperativoPanel({
                                     pasajeroNombre: f.pasajeroNombre,
                                     trasbordoHacia: f.trasbordoHacia,
                                     trasbordoSujeto: f.trasbordoSujeto,
+                                    trasbordoMovimiento: f.trasbordoMovimiento,
                                   })}
                                 </td>
                                 <td>

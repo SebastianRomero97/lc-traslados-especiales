@@ -100,6 +100,7 @@ export async function GET(_request: Request, { params }: Params) {
       accion: f.accion,
       trasbordoHacia: f.trasbordoHacia,
       trasbordoSujeto: f.trasbordoSujeto,
+      trasbordoMovimiento: f.trasbordoMovimiento,
     })),
   });
 
@@ -401,6 +402,7 @@ export async function PATCH(request: Request, { params }: Params) {
             accion: fila.accion,
             trasbordoHacia: fila.trasbordoHacia,
             trasbordoSujeto: fila.trasbordoSujeto,
+            trasbordoMovimiento: fila.trasbordoMovimiento,
             trasbordoTransporteId: fila.trasbordoTransporteId,
             lat: fila.lat,
             lon: fila.lon,

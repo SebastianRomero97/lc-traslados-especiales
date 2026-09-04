@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import {
   isTrasbordoSujeto,
+  isTrasbordoMovimiento,
   normalizeAccion,
   type GrillaFilaInput,
   type TrasbordoSujeto,
+  type TrasbordoMovimiento,
 } from '@/lib/grilla.utils';
 import { filaCoordsData } from '@/lib/coords-sync';
 
@@ -17,6 +19,7 @@ export type TrasbordoFilaPersist = {
   accion: ReturnType<typeof normalizeAccion>;
   trasbordoHacia: string | null;
   trasbordoSujeto: TrasbordoSujeto | null;
+  trasbordoMovimiento: TrasbordoMovimiento | null;
   trasbordoTransporteId: string | null;
   lat: number | null;
   lon: number | null;
@@ -73,6 +76,7 @@ export async function prepareGrillaFilasForSave(params: {
         accion,
         trasbordoHacia: null,
         trasbordoSujeto: null,
+        trasbordoMovimiento: null,
         trasbordoTransporteId: null,
         ...coords,
       });
@@ -87,6 +91,15 @@ export async function prepareGrillaFilasForSave(params: {
       };
     }
     const sujeto = sujetoRaw;
+
+    const movRaw = fila.trasbordoMovimiento?.toString().trim() || '';
+    if (!isTrasbordoMovimiento(movRaw)) {
+      return {
+        ok: false,
+        message: `Indicá si el trasbordo es sube o baja (fila ${n}).`,
+      };
+    }
+    const movimiento = movRaw;
 
     const transporteId = fila.trasbordoTransporteId?.trim() || '';
     if (!transporteId) {
@@ -160,6 +173,7 @@ export async function prepareGrillaFilasForSave(params: {
       accion,
       trasbordoHacia: transporteNombre,
       trasbordoSujeto: sujeto,
+      trasbordoMovimiento: movimiento,
       trasbordoTransporteId: transporteId,
       ...coords,
     });

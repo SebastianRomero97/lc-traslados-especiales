@@ -89,6 +89,7 @@ export type HistorialRegistroFicha = {
       accion: string;
       trasbordoHacia: string | null;
       trasbordoSujeto?: string | null;
+      trasbordoMovimiento?: string | null;
     }[];
   };
 };

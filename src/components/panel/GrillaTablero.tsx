@@ -14,7 +14,6 @@ import {
   isSalidaItinerario,
   mapGrillaFilaToForm,
   splitTipoItinerario,
-  sugerirHorariosHaciaAtras,
   todayFechaInput,
   type AccionParada,
   type ModalidadItinerario,
@@ -22,12 +21,11 @@ import {
   type TipoItinerario,
   type TipoParadaForm,
   type TrasbordoSujeto,
+  type TrasbordoMovimiento,
 } from '@/lib/grilla.utils';
 import { isBaseLcNombre } from '@/lib/base-lc.utils';
 import { usePanelPopup } from '@/components/panel/PanelPopup';
 import {
-  geocodeParadas,
-  osrmTravelGapsMinutes,
   type MapaParada,
 } from '@/lib/osm-maps';
 import {
@@ -69,6 +67,7 @@ type FilaBoard = {
   accion: AccionParada;
   trasbordoHacia: string;
   trasbordoSujeto: TrasbordoSujeto | '';
+  trasbordoMovimiento: TrasbordoMovimiento | '';
   trasbordoTransporteId: string;
   trasbordoPuntoMode: 'destino' | 'direccion';
   lat: number | null;
@@ -175,6 +174,7 @@ export type GrillaTableroInitial = {
     accion: AccionParada | string;
     trasbordoHacia: string | null;
     trasbordoSujeto?: TrasbordoSujeto | string | null;
+    trasbordoMovimiento?: TrasbordoMovimiento | string | null;
     trasbordoTransporteId?: string | null;
     lat?: number | null;
     lon?: number | null;
@@ -879,6 +879,7 @@ export function GrillaTablero({
         accion,
         trasbordoHacia: '',
         trasbordoSujeto: '',
+        trasbordoMovimiento: '',
         trasbordoTransporteId: '',
         trasbordoPuntoMode: 'destino',
         lat: p.lat ?? null,
@@ -916,6 +917,7 @@ export function GrillaTablero({
         accion,
         trasbordoHacia: '',
         trasbordoSujeto: '',
+        trasbordoMovimiento: '',
         trasbordoTransporteId: '',
         trasbordoPuntoMode: 'destino',
         lat: d.lat ?? null,
@@ -1038,6 +1040,9 @@ export function GrillaTablero({
       if (fila.accion === 'TRASBORDO') {
         if (!fila.trasbordoSujeto) {
           return `Indicá si el trasbordo es de pasajero o celadora (fila ${n}).`;
+        }
+        if (!fila.trasbordoMovimiento) {
+          return `Indicá si el trasbordo es sube o baja (fila ${n}).`;
         }
         if (!fila.trasbordoTransporteId.trim()) {
           return `Seleccioná el vehículo de trasbordo (fila ${n}).`;
@@ -1201,77 +1206,6 @@ export function GrillaTablero({
     }
   };
 
-  const handleSugerirHorarios = async () => {
-    const tieneAncla = filas.some((f) => f.destinoId && f.hora.trim());
-    if (!tieneAncla) {
-      popup.error(
-        'Para sugerir horarios, primero cargá la hora en al menos un destino de la grilla.',
-      );
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const { ubicadas } = await geocodeParadas(
-        filas
-          .filter((f) => f.direccion.trim())
-          .map((f) => ({
-            clientId: f.clientId,
-            label: f.pasajeroNombre || f.direccion,
-            direccion: f.direccion,
-            lat: f.lat,
-            lon: f.lon,
-          })),
-      );
-      const coordsById = new Map(ubicadas.map((u) => [u.clientId, u.coords]));
-
-      const filasConCoords = filas.map((f) => {
-        const coords = coordsById.get(f.clientId);
-        if (!coords) return f;
-        if (f.lat === coords.lat && f.lon === coords.lon) return f;
-        return { ...f, lat: coords.lat, lon: coords.lon };
-      });
-
-      const coordsList = filasConCoords.map((f) =>
-        typeof f.lat === 'number' &&
-        typeof f.lon === 'number' &&
-        Number.isFinite(f.lat) &&
-        Number.isFinite(f.lon)
-          ? { lat: f.lat, lon: f.lon }
-          : null,
-      );
-
-      const gaps = await osrmTravelGapsMinutes(coordsList);
-      const usadosOsrm = gaps.filter((g) => g != null).length;
-
-      const sugeridas = sugerirHorariosHaciaAtras(
-        filasConCoords.map((f) => ({ hora: f.hora || null, destinoId: f.destinoId || null })),
-        15,
-        gaps,
-      );
-      const next = filasConCoords.map((f, i) => {
-        if (f.hora.trim() || !sugeridas[i]) return f;
-        return { ...f, hora: sugeridas[i]! };
-      });
-      const aplicadas = next.filter((f, i) => f.hora !== filas[i]?.hora).length;
-      if (aplicadas === 0) {
-        popup.error('No había paradas sin horario para completar.');
-        setFilas(filasConCoords);
-        return;
-      }
-      setFilas(next);
-      popup.success(
-        usadosOsrm > 0
-          ? `Se sugirieron ${aplicadas} horario(s) según tiempo de viaje. Donde faltó ruta, se usó 15 min.`
-          : `Se sugirieron ${aplicadas} horario(s) con 15 min (no hubo ruta entre paradas).`,
-      );
-    } catch {
-      popup.error('No se pudieron calcular los tiempos de viaje. Probá de nuevo.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleSave = async () => {
     const error = validate();
     if (error) {
@@ -1326,6 +1260,7 @@ export function GrillaTablero({
             accion: f.accion,
             trasbordoHacia: esTrasbordo ? f.trasbordoHacia || null : null,
             trasbordoSujeto: esTrasbordo ? f.trasbordoSujeto || null : null,
+            trasbordoMovimiento: esTrasbordo ? f.trasbordoMovimiento || null : null,
             trasbordoTransporteId: esTrasbordo
               ? f.trasbordoTransporteId || null
               : null,
@@ -1455,6 +1390,7 @@ export function GrillaTablero({
               accion: AccionParada;
               trasbordoHacia: string | null;
               trasbordoSujeto?: TrasbordoSujeto | string | null;
+              trasbordoMovimiento?: TrasbordoMovimiento | string | null;
               trasbordoTransporteId?: string | null;
             }[];
           };
@@ -1478,6 +1414,7 @@ export function GrillaTablero({
             ...f,
             trasbordoHacia: f.trasbordoHacia,
             trasbordoSujeto: f.trasbordoSujeto,
+            trasbordoMovimiento: f.trasbordoMovimiento,
             trasbordoTransporteId: f.trasbordoTransporteId,
           });
           return {
@@ -1728,15 +1665,6 @@ export function GrillaTablero({
           >
             Volver al listado
           </button>
-          <button
-            type="button"
-            className="btn btn--outline btn--sm"
-            onClick={() => void handleSugerirHorarios()}
-            disabled={submitting || filas.length === 0}
-            title="Completa horarios vacíos hacia atrás según tiempo de viaje entre paradas (OSRM); si falta ruta usa 15 min"
-          >
-            Sugerir horarios
-          </button>
           {!isNew && allowDelete && (
             <button
               type="button"
@@ -1747,15 +1675,18 @@ export function GrillaTablero({
               Eliminar
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn--primary btn--sm"
-            onClick={() => void handleSave()}
-            disabled={submitting || !areaId || optionsLoading}
-          >
-            {submitting ? 'Guardando...' : 'Guardar grilla'}
-          </button>
         </div>
+      </div>
+
+      <div className="grilla-tablero__save-bar">
+        <button
+          type="button"
+          className="btn btn--success grilla-tablero__save-btn"
+          onClick={() => void handleSave()}
+          disabled={submitting || !areaId || optionsLoading}
+        >
+          {submitting ? 'Guardando...' : 'Guardar grilla'}
+        </button>
       </div>
 
       <div className="grilla-tablero__meta">
@@ -2317,6 +2248,7 @@ export function GrillaTablero({
                                 accion,
                                 trasbordoHacia: '',
                                 trasbordoSujeto: '',
+                                trasbordoMovimiento: '',
                                 trasbordoTransporteId: '',
                                 trasbordoPuntoMode: 'destino',
                                 pasajeroNombre: buildDetalleDestino({
@@ -2335,6 +2267,7 @@ export function GrillaTablero({
                                 accion,
                                 tipoParada: 'trasbordo',
                                 trasbordoSujeto: f.trasbordoSujeto || 'PASAJERO',
+                                trasbordoMovimiento: f.trasbordoMovimiento || 'BAJA',
                                 trasbordoPuntoMode: f.destinoId ? 'destino' : f.trasbordoPuntoMode || 'destino',
                               };
                             }
@@ -2343,6 +2276,7 @@ export function GrillaTablero({
                               accion,
                               trasbordoHacia: '',
                               trasbordoSujeto: '',
+                              trasbordoMovimiento: '',
                               trasbordoTransporteId: '',
                               trasbordoPuntoMode: 'destino',
                             };
@@ -2411,6 +2345,28 @@ export function GrillaTablero({
                           </select>
                         </div>
 
+                        <div className="form-group">
+                          <label>Movimiento</label>
+                          <select
+                            value={fila.trasbordoMovimiento || ''}
+                            onChange={(e) => {
+                              const movimiento = e.target.value as TrasbordoMovimiento | '';
+                              setFilas((prev) =>
+                                prev.map((f, i) =>
+                                  i === index
+                                    ? { ...f, trasbordoMovimiento: movimiento }
+                                    : f,
+                                ),
+                              );
+                            }}
+                            required
+                          >
+                            <option value="">Elegí…</option>
+                            <option value="SUBE">Sube</option>
+                            <option value="BAJA">Baja</option>
+                          </select>
+                        </div>
+
                         {fila.trasbordoSujeto === 'CELADORA' ? (
                           <div className="form-group">
                             <label>Celadora</label>
@@ -2467,7 +2423,11 @@ export function GrillaTablero({
                         )}
 
                         <div className="form-group">
-                          <label>Hacia vehículo</label>
+                          <label>
+                            {fila.trasbordoMovimiento === 'SUBE'
+                              ? 'Desde vehículo'
+                              : 'Hacia vehículo'}
+                          </label>
                           <select
                             value={fila.trasbordoTransporteId}
                             onChange={(e) => {

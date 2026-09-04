@@ -71,6 +71,7 @@ export async function GET(_request: Request, { params }: Params) {
                   accion: true,
                   trasbordoHacia: true,
                   trasbordoSujeto: true,
+                  trasbordoMovimiento: true,
                 },
               },
             },
@@ -140,6 +141,7 @@ export async function GET(_request: Request, { params }: Params) {
           accion: string;
           trasbordoHacia: string | null;
           trasbordoSujeto: string | null;
+          trasbordoMovimiento: string | null;
         }[];
       };
     }[] = [];

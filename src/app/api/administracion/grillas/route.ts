@@ -325,6 +325,7 @@ export async function POST(request: Request) {
               accion: fila.accion,
               trasbordoHacia: fila.trasbordoHacia,
               trasbordoSujeto: fila.trasbordoSujeto,
+              trasbordoMovimiento: fila.trasbordoMovimiento,
               trasbordoTransporteId: fila.trasbordoTransporteId,
               lat: fila.lat,
               lon: fila.lon,
